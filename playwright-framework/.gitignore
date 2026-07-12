@@ -11,3 +11,4 @@ dist/
 # Self-contained HTML reports generated per execution by CustomHtmlReporter;
 # can embed large base64 video/screenshots, and a new file is written every run.
 reports/
+.DS_Store
