@@ -26,6 +26,12 @@ function readNum(key: string, fallback: number): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function readBool(key: string, fallback: boolean): boolean {
+  const raw = process.env[key];
+  if (raw === undefined) return fallback;
+  return raw.toLowerCase() === 'true' || raw === '1';
+}
+
 export interface ApiConfig {
   readonly baseUrl: string;
   readonly username: string;
@@ -42,6 +48,12 @@ export interface ApiConfig {
   readonly maxAcceptableResponseTimeMs: number;
   /** Safety margin (seconds) subtracted from a token's real expiry before treating it as "expired". */
   readonly tokenExpiryBufferSeconds: number;
+  /**
+   * Whether the UI Verification Layer's browser runs headless. Reads the
+   * same `HEADLESS` env var Use Case 1 uses (as data only — this reader is
+   * independent, no code shared with `config/environment.ts`).
+   */
+  readonly headless: boolean;
 }
 
 class ConfigManagerImpl {
@@ -59,6 +71,7 @@ class ConfigManagerImpl {
         retryMaxDelayMs: readNum('API_RETRY_MAX_DELAY_MS', 8_000),
         maxAcceptableResponseTimeMs: readNum('API_MAX_RESPONSE_TIME_MS', 10_000),
         tokenExpiryBufferSeconds: readNum('API_TOKEN_EXPIRY_BUFFER_SECONDS', 60),
+        headless: readBool('HEADLESS', true),
       };
     }
     return this.cached;

@@ -4,11 +4,11 @@ import { ConfigManager } from './api-automation/utils/ConfigManager';
 /**
  * Independent Playwright configuration for the Use Case 2 API automation
  * module. Deliberately separate from `playwright.config.ts` (the UI
- * suite's config): no `globalSetup` (that performs a UI browser login this
- * module doesn't need — it authenticates via `AuthenticationApi` itself),
- * no `storageState`, and no browser `projects` at all — every test here
- * uses Playwright's built-in `request` fixture (an `APIRequestContext`),
- * not a browser page.
+ * suite's config): no `globalSetup` (this module authenticates via
+ * `AuthenticationApi` itself, and — for the UI Verification Layer below —
+ * logs into the UI directly inside its own test.step, not via a shared
+ * session), no `storageState`, and no explicit browser `projects` (the
+ * implicit default project uses Chromium).
  *
  * Everything this suite depends on lives under `api-automation/` — a
  * single dedicated folder, entirely separate from Use Case 1's `pages/`,
@@ -23,7 +23,14 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0, // ApiClient/RetryHelper already retry transient failures internally
   workers: process.env.CI ? 2 : undefined,
-  timeout: 60_000,
+  /*
+   * Bumped from the original 60s: the UI Verification Layer adds a real
+   * browser login + module-iframe load on top of the API steps. Live
+   * testing showed the Learning Instances module iframe alone can take
+   * 30s+ to render on a slow run, on top of ~5-8s post-login bootstrap —
+   * 60s left no margin once that step was added.
+   */
+  timeout: 180_000,
 
   reporter: [
     ['list'],
@@ -36,6 +43,16 @@ export default defineConfig({
     extraHTTPHeaders: {
       Accept: 'application/json',
     },
+    /*
+     * Added for the UI Verification Layer: after creating a Learning
+     * Instance via API, the test also drives a real browser to confirm
+     * it's visible in the app's Learning Instances list. `headless` reads
+     * the same HEADLESS env var Use Case 1 uses, via ConfigManager's own
+     * independent reader (data reuse only, no code coupling).
+     */
+    headless: config.headless,
+    viewport: { width: 1600, height: 900 },
+    ignoreHTTPSErrors: true,
   },
 
   outputDir: 'test-results-api/',

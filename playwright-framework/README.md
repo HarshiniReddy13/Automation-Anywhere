@@ -258,6 +258,7 @@ how that's enforced.
 > 2. Document every Learning Instance endpoint the flow depends on (method, URL, headers, payload/response shape) via `api/endpoints.ts`.
 > 3. Create a Learning Instance with Document Type = Invoice; validate the HTTP response, schema, and captured fields.
 > 4. Retrieve the created instance and validate it matches what was requested (ID, name, document type, status, payload fields).
+> 5. **UI Verification Layer**: log into the real app's UI (a genuine browser, read-only) and confirm the same Learning Instance is visible in AI → Document Automation → Learning Instances, with the displayed name/status/document type matching the API response — then clean up via the same API-based delete as before.
 
 Every endpoint was confirmed by driving the real application and capturing
 live network traffic — not guessed from REST convention. One deliberate,
@@ -294,11 +295,84 @@ playwright-framework/
 │   │   ├── RetryHelper.ts           # Exponential backoff retry + condition polling (no hardcoded waits)
 │   │   ├── ApiLogger.ts             # PASS/FAIL/WARNING/INFO logs with secret redaction
 │   │   └── ConfigManager.ts         # Independent .env reader for this module
+│   ├── pages/                       # UI Verification Layer (Step 5) — read-only browser checks
+│   │   ├── LoginPage.ts             # UI login (independent of Use Case 1's pages/LoginPage.ts)
+│   │   ├── DashboardPage.ts         # Post-login landing; navigates AI -> Document Automation
+│   │   └── LearningInstancesPage.ts # The Learning Instances table: search, locate row, assert, screenshot, diagnose
 │   └── tests/
-│       └── learningInstance.spec.ts # The 4-step test.step() workflow
+│       └── learningInstance.spec.ts # The 5-step test.step() workflow
 ├── .checkpoints/                 # Gitignored — checkpoint JSON written/cleared at runtime
 └── playwright.api.config.ts      # Independent Playwright config for this module (repo root, like playwright.config.ts)
 ```
+
+**Why `api-automation/pages/` and not a top-level `pages/`**: the top-level
+`pages/` folder already belongs to Use Case 1. Adding Use Case 2's page
+objects there — even under different filenames — would recreate the exact
+"which use case does this file belong to" ambiguity this README's
+["Isolation from Use Case 1"](#isolation-from-use-case-1) section exists to
+prevent. Keeping them nested under `api-automation/` means the whole
+directory tree stays unambiguous at a glance, consistent with everything
+else in this use case.
+
+### UI Verification Layer (Step 5)
+
+After the Learning Instance is created and validated via API, the test logs
+into the real application with a genuine browser and confirms the *same*
+instance is visible and correctly displayed — proving the backend write
+actually reached the frontend, not just the database:
+
+1. **Login (UI)** — `LoginPage` drives the real login form.
+2. **Navigate** — `DashboardPage.goToLearningInstances()` clicks **AI →
+   Document Automation** (confirmed via live navigation: there is no
+   separate "Learning Instances" nav item — "Document Automation" opens
+   directly to that list).
+3. **Search** — `LearningInstancesPage.searchByName()` uses the page's own
+   Name search box. Confirmed via live testing: the search box does **not**
+   filter on `fill()` alone — it only re-queries on **Enter** — so this is
+   modeled as fill-then-press-Enter, not a cosmetic keystroke.
+4. **Locate + assert** — the row is found by its `data-row-id` (the
+   instance ID), then its displayed **name**, **status**, and **document
+   type** are asserted against the API response already stored in the
+   `ExecutionContext` (`context.getLearningInstance()`) — no duplicate API
+   calls are made to re-fetch this data. Status comparison is
+   case-insensitive (UI shows "Private", the API returns "PRIVATE" — a
+   display convention, confirmed via live comparison, not a real
+   mismatch). The Community Edition table has no Created Date / Owner /
+   Version columns (confirmed via live DOM capture), so those optional
+   extras from the original spec are not asserted — there's nothing to
+   check.
+5. **Cleanup** — unchanged: the existing API-based `afterAll` deletes the
+   instance. See the important caveat below.
+
+**Creation stays 100% API-driven.** `LearningInstancesPage` has no
+create/edit methods on purpose — the UI is only ever read from.
+
+**Session-collision caveat (found via live testing, not assumed):** this
+account's JWT carries `multipleLoginAllowed: false`. Logging into the UI
+silently invalidates whatever API token Step 1 obtained earlier in the same
+run — its next use returns `401
+IQUM001.user.auth.token.validation.failed`. Rather than touch the existing
+(unmodified) cleanup logic, the UI-verification step re-authenticates via
+the API as its last action — inside a `finally`, so it runs even if UI
+verification itself fails — and calls `context.setAuth()` with the fresh
+token. Cleanup reads `context.getAuth()` exactly as before and simply gets
+a valid token again.
+
+**Screenshots** (`list`, `matching-row`, `success`, or `failure`/
+`data-mismatch` on the two respective failure paths) are attached via
+Playwright's own `testInfo.attach()`, which embeds them directly into
+`playwright-report-api/` — no dependency on Use Case 1's custom
+`StepRecorder`/HTML reporter.
+
+**On failure**, `LearningInstancesPage.diagnose()` captures the current
+URL, every other row currently in the table, and recent browser console
+output, then produces one of three explanations: the table is empty
+(likely a UI load/sync issue, not backend, since the API step already
+proved the record exists server-side), other rows are visible but not this
+one (likely a sync delay), or the row exists but a field didn't match
+(a real data mismatch) — verified live by pointing the search at a
+deliberately non-existent instance and confirming the diagnosis fired
+correctly.
 
 ### Running the suite
 
@@ -306,6 +380,11 @@ playwright-framework/
 npm run test:api          # runs api-automation/tests/ only, using playwright.api.config.ts
 npm run report:api        # open this module's own HTML report (playwright-report-api/)
 ```
+
+The UI Verification Layer means this suite now launches a real browser too
+— `HEADLESS` in `.env` controls it exactly like it does for Use Case 1
+(`HEADLESS=false` to watch it log in and click through AI → Document
+Automation live).
 
 `npm test` / `npm run test:rules` (Use Case 1) will **never** pick this up —
 `playwright.config.ts`'s `testDir: './tests'` never scans `api-automation/`
@@ -330,6 +409,7 @@ Reuses the same `.env` file as Use Case 1 (as **data only** —
 | `API_RETRY_MAX_DELAY_MS` | Backoff cap | `8000` |
 | `API_MAX_RESPONSE_TIME_MS` | Response-time assertion threshold | `10000` |
 | `API_TOKEN_EXPIRY_BUFFER_SECONDS` | How early to treat a token as "expiring soon" and re-auth | `60` |
+| `HEADLESS` | Whether the UI Verification Layer's browser runs headless (same var Use Case 1 uses, read independently) | `true` |
 
 All have working defaults in `ConfigManager.ts` — only `AA_USERNAME`/`AA_PASSWORD`/`BASE_URL` need to be set for a fresh environment.
 
@@ -360,9 +440,11 @@ downstream steps need (token + expiry, instance ID/name/status/payload).
   itself — lives under `api-automation/`. Use Case 1's code
   (`pages/`, `fixtures/`, `config/`, `utils/`) lives entirely outside it.
   There is no shared or same-named directory between the two use cases.
-- Separate Playwright config (`playwright.api.config.ts`): no `globalSetup`,
-  no `storageState`, no browser `projects` — every test uses the built-in
-  `request` fixture (`APIRequestContext`), never a `page`.
+- Separate Playwright config (`playwright.api.config.ts`): no `globalSetup`
+  and no `storageState` — Learning Instance creation/validation uses the
+  built-in `request` fixture (`APIRequestContext`); the UI Verification
+  Layer (Step 5) uses the built-in `page` fixture directly inside the test,
+  logging in itself rather than inheriting Use Case 1's shared session.
 - `playwright.config.ts` (UI) has `testDir: './tests'`, which structurally
   cannot see `api-automation/` — no `testIgnore` workaround needed.
 - No imports from `pages/`, `fixtures/baseFixture.ts`, or any Use Case 1 spec

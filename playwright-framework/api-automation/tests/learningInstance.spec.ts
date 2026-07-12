@@ -9,14 +9,25 @@ import { ResponseValidator } from '../validators/ResponseValidator';
 import { SchemaValidator } from '../validators/SchemaValidator';
 import { ConfigManager } from '../utils/ConfigManager';
 import { ApiLogger } from '../utils/ApiLogger';
+import { LoginPage } from '../pages/LoginPage';
+import { DashboardPage } from '../pages/DashboardPage';
+import { LearningInstancesPage } from '../pages/LearningInstancesPage';
 
 /**
- * Use Case 2: Learning Instance API Automation.
+ * Use Case 2: Learning Instance API Automation, extended with a UI
+ * Verification Layer.
  *
- * Completely independent of the Use Case 1 UI suite — no imports from
- * `pages/`, `fixtures/baseFixture.ts`, or `tests/rulesBuilder.spec.ts`.
- * Uses Playwright's own built-in `request` fixture (an `APIRequestContext`)
- * rather than a browser page.
+ * Completely independent of the Use Case 1 UI suite — no imports from the
+ * top-level `pages/`, `fixtures/baseFixture.ts`, or
+ * `tests/rulesBuilder.spec.ts`. The UI Verification Layer's page objects
+ * live under `../pages/` (i.e. `api-automation/pages/`), a separate folder
+ * from Use Case 1's `pages/`, with no shared code — only the same live app
+ * and the same `.env` credentials as data.
+ *
+ * The Learning Instance itself is still created entirely via
+ * `LearningInstanceApi` (Playwright's `request` fixture / `APIRequestContext`);
+ * the browser (`page` fixture) is used strictly read-only, after creation,
+ * to confirm the app's UI actually displays it — never to create one.
  *
  * Error handling note: every `ApiClient` call already logs full
  * request/response detail (URL, headers, bodies, status, timing) via
@@ -24,7 +35,9 @@ import { ApiLogger } from '../utils/ApiLogger';
  * complete `ApiResponse` for anything that needs to inspect it — combined
  * with Playwright's own stack trace capture on a failed `expect()`, this
  * satisfies Use Case 2's "Error Handling" section without needing
- * duplicate try/catch scaffolding in the test itself.
+ * duplicate try/catch scaffolding in the test itself. The UI step adds its
+ * own richer diagnostics (see `LearningInstancesPage.diagnose()`) since a
+ * missing UI row needs a different explanation than an HTTP failure does.
  */
 test.describe('Use Case 2: Learning Instance API Automation', () => {
   let context: ExecutionContext;
@@ -74,7 +87,7 @@ test.describe('Use Case 2: Learning Instance API Automation', () => {
     ApiLogger.info('Cleanup', 'Full run completed successfully — test instance deleted and checkpoint cleared.');
   });
 
-  test('creates and validates a Learning Instance for Invoice documents', async ({ request }) => {
+  test('creates and validates a Learning Instance for Invoice documents', async ({ request, page }, testInfo) => {
     const authApi = new AuthenticationApi(request);
     const learningInstanceApi = new LearningInstanceApi(request);
     const config = ConfigManager.get();
@@ -215,6 +228,94 @@ test.describe('Use Case 2: Learning Instance API Automation', () => {
       expect(response.body.locale, 'Locale should match the original request payload').toBe(requestPayload.locale);
 
       checkpointManager.saveCheckpoint('VALIDATION_COMPLETED', context);
+    });
+
+    await test.step('Verify Learning Instance in UI', async () => {
+      const stored = context.getLearningInstance()!;
+      const consoleLogs: string[] = [];
+      const consoleListener = (msg: { type(): string; text(): string }) => {
+        consoleLogs.push(`[${msg.type()}] ${msg.text()}`);
+      };
+      page.on('console', consoleListener);
+
+      const loginPage = new LoginPage(page);
+      const dashboardPage = new DashboardPage(page);
+      const learningInstancesPage = new LearningInstancesPage(page);
+
+      try {
+        ApiLogger.info(
+          'Verify Learning Instance in UI',
+          `Logging into the UI to verify Learning Instance "${stored.name}" (${stored.id}) is visible and correctly displayed. ` +
+            'Creation remains 100% API-driven — this step is read-only.'
+        );
+
+        await loginPage.open();
+        await loginPage.login(config.username, config.password);
+        await dashboardPage.assertLoaded();
+        ApiLogger.info('Verify Learning Instance in UI', 'UI login successful, dashboard/app shell loaded.');
+
+        await dashboardPage.goToLearningInstances();
+        await learningInstancesPage.assertLoaded();
+        ApiLogger.info(
+          'Verify Learning Instance in UI',
+          'Navigated AI -> Document Automation; Learning Instances page and table loaded.'
+        );
+        await learningInstancesPage.captureScreenshot(testInfo, 'ui-verification__list');
+
+        await learningInstancesPage.searchByName(stored.name);
+        ApiLogger.info('Verify Learning Instance in UI', `Searched for "${stored.name}".`);
+
+        try {
+          await learningInstancesPage.waitForRow(stored.id, 30_000);
+        } catch {
+          const diagnosis = await learningInstancesPage.diagnose(
+            { id: stored.id, name: stored.name, status: stored.status, documentType: INVOICE_DOMAIN.domainName },
+            consoleLogs
+          );
+          await learningInstancesPage.captureScreenshot(testInfo, 'ui-verification__failure');
+          throw new Error(diagnosis);
+        }
+        ApiLogger.info('Verify Learning Instance in UI', 'Matching row found in the table.');
+        await learningInstancesPage.captureScreenshot(testInfo, 'ui-verification__matching-row');
+
+        try {
+          const snapshot = await learningInstancesPage.assertRowMatches({
+            id: stored.id,
+            name: stored.name,
+            status: stored.status,
+            documentType: INVOICE_DOMAIN.domainName,
+          });
+          ApiLogger.info(
+            'Verify Learning Instance in UI',
+            `UI data matches the API response — name="${snapshot.name}", status="${snapshot.status}", documentType="${snapshot.documentType}".`
+          );
+          await learningInstancesPage.captureScreenshot(testInfo, 'ui-verification__success');
+        } catch (err) {
+          await learningInstancesPage.captureScreenshot(testInfo, 'ui-verification__data-mismatch');
+          ApiLogger.warn(
+            'Verify Learning Instance in UI',
+            `Row was found but displayed data did not match the API response: ${err instanceof Error ? err.message : String(err)}`
+          );
+          throw err;
+        }
+      } finally {
+        page.off('console', consoleListener);
+        // The UI login above invalidates whatever API token Step 1
+        // obtained (confirmed via live testing: this account's JWT carries
+        // multipleLoginAllowed: false, so only the most recently issued
+        // token stays valid — a second login silently turns the earlier
+        // token into an HTTP 401 on its next use). Re-authenticate
+        // unconditionally — even if the UI verification above failed — so
+        // the existing, UNCHANGED cleanup logic in afterAll (which reads
+        // context.getAuth()) still has a valid token to delete the test
+        // instance with.
+        const { result: freshAuth } = await authApi.authenticate({ username: config.username, password: config.password });
+        context.setAuth(freshAuth);
+        ApiLogger.info(
+          'Verify Learning Instance in UI',
+          'Re-authenticated via API to restore a valid token for cleanup (the UI login above invalidated the prior session token).'
+        );
+      }
     });
   });
 });
