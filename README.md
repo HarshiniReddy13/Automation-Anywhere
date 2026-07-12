@@ -11,6 +11,7 @@ This repository contains Playwright + TypeScript automation for two assignment u
 ├── form-automation/       # Use Case 1 (UI)
 ├── api-automation/        # Use Case 2 (API)
 ├── reporting/              # Shared custom HTML reporter
+├── reports/                # Generated HTML reports (gitignored)
 ├── package.json
 ├── playwright.config.ts       # Use Case 1 config
 ├── playwright.api.config.ts   # Use Case 2 config
