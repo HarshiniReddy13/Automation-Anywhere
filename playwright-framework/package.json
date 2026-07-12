@@ -9,7 +9,9 @@
     "test:debug": "playwright test --debug",
     "test:ui": "playwright test --ui",
     "test:rules": "playwright test tests/rulesBuilder.spec.ts",
+    "test:api": "playwright test --config=playwright.api.config.ts",
     "report": "playwright show-report",
+    "report:api": "playwright show-report playwright-report-api",
     "typecheck": "tsc --noEmit",
     "codegen": "playwright codegen",
     "install:browsers": "playwright install --with-deps"

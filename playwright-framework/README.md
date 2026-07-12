@@ -241,3 +241,132 @@ Every run produces one self-contained `reports/TestExecution_<timestamp>.html`
   name per run so repeat runs never collide.
 - **API-first verification** — persistence is confirmed against the backend
   response (status + payload), then the UI toast, not UI state alone.
+
+---
+
+## Use Case 2: Learning Instance API Automation (independent module)
+
+A second, **completely independent** automation module in the same repo:
+pure API testing (no browser page) against the Document Automation /
+IQ Bot "Learning Instance" REST endpoints, using Playwright's
+`APIRequestContext`. It shares nothing with Use Case 1's Page Objects,
+fixtures, `global-setup.ts`, or `playwright.config.ts` — see
+["Isolation from Use Case 1"](#isolation-from-use-case-1) below for exactly
+how that's enforced.
+
+> 1. Authenticate and capture an access token (reused across steps until it expires).
+> 2. Document every Learning Instance endpoint the flow depends on (method, URL, headers, payload/response shape) via `api/endpoints.ts`.
+> 3. Create a Learning Instance with Document Type = Invoice; validate the HTTP response, schema, and captured fields.
+> 4. Retrieve the created instance and validate it matches what was requested (ID, name, document type, status, payload fields).
+
+Every endpoint was confirmed by driving the real application and capturing
+live network traffic — not guessed from REST convention. One deliberate,
+documented deviation from the original spec's assumption: **`POST
+/cognitive/v3/learninginstances` returns `200 OK` on success, not `201
+Created`** — confirmed via both browser capture and a direct minimal-payload
+API call. `ResponseValidator`/the test assert the real, observed value
+(`api-automation/api/LearningInstanceApi.ts` and
+`api-automation/tests/learningInstance.spec.ts` both have inline comments on
+this).
+
+### Folder structure
+
+Everything for this use case lives under one dedicated top-level folder,
+`api-automation/` — nothing is interleaved with Use Case 1's `pages/`,
+`fixtures/`, `config/`, or `utils/`, not even by directory name:
+
+```
+playwright-framework/
+├── api-automation/               # Use Case 2 — everything lives in here, nowhere else
+│   ├── api/
+│   │   ├── ApiClient.ts             # APIRequestContext wrapper: logging, retry, HttpError
+│   │   ├── AuthenticationApi.ts     # Step 1 — authenticate, decode/cache token expiry
+│   │   ├── LearningInstanceApi.ts   # Steps 3 & 4 — create/get/list/delete Learning Instances
+│   │   ├── endpoints.ts             # Documented endpoint catalog (method/path/headers/payload)
+│   │   └── types.ts                 # Shared request/response types
+│   ├── context/
+│   │   ├── ExecutionContext.ts      # In-memory run state (auth, instance) — Step 1-4 shared state
+│   │   └── CheckpointManager.ts     # Persists ExecutionContext to disk for resume-on-rerun
+│   ├── validators/
+│   │   ├── ResponseValidator.ts     # HTTP-level assertions (status, timing, headers, content-type)
+│   │   └── SchemaValidator.ts       # Schema/field-type/functional assertions
+│   ├── utils/
+│   │   ├── RetryHelper.ts           # Exponential backoff retry + condition polling (no hardcoded waits)
+│   │   ├── ApiLogger.ts             # PASS/FAIL/WARNING/INFO logs with secret redaction
+│   │   └── ConfigManager.ts         # Independent .env reader for this module
+│   └── tests/
+│       └── learningInstance.spec.ts # The 4-step test.step() workflow
+├── .checkpoints/                 # Gitignored — checkpoint JSON written/cleared at runtime
+└── playwright.api.config.ts      # Independent Playwright config for this module (repo root, like playwright.config.ts)
+```
+
+### Running the suite
+
+```bash
+npm run test:api          # runs api-automation/tests/ only, using playwright.api.config.ts
+npm run report:api        # open this module's own HTML report (playwright-report-api/)
+```
+
+`npm test` / `npm run test:rules` (Use Case 1) will **never** pick this up —
+`playwright.config.ts`'s `testDir: './tests'` never scans `api-automation/`
+at all. Conversely, `npm run test:api` (`playwright.api.config.ts`,
+`testDir: './api-automation/tests'`) only ever looks inside
+`api-automation/`.
+
+### `.env` reference
+
+Reuses the same `.env` file as Use Case 1 (as **data only** —
+`api-automation/utils/ConfigManager.ts` reads it independently of
+`config/environment.ts`, no shared code):
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `BASE_URL` | API base URL | `community.cloud.automationanywhere.digital` |
+| `AA_USERNAME` | Login username/email | — (required) |
+| `AA_PASSWORD` | Login password | — (required) |
+| `API_REQUEST_TIMEOUT_MS` | Per-request timeout | `30000` |
+| `API_MAX_RETRY_ATTEMPTS` | Max retries for transient failures (5xx/408/425/429/network) | `3` |
+| `API_RETRY_BASE_DELAY_MS` | Base delay for exponential backoff | `500` |
+| `API_RETRY_MAX_DELAY_MS` | Backoff cap | `8000` |
+| `API_MAX_RESPONSE_TIME_MS` | Response-time assertion threshold | `10000` |
+| `API_TOKEN_EXPIRY_BUFFER_SECONDS` | How early to treat a token as "expiring soon" and re-auth | `60` |
+
+All have working defaults in `ConfigManager.ts` — only `AA_USERNAME`/`AA_PASSWORD`/`BASE_URL` need to be set for a fresh environment.
+
+### Checkpoint / resume behavior
+
+Each successful step writes a checkpoint (`AUTHENTICATION` →
+`LEARNING_INSTANCE_CREATED` → `VALIDATION_COMPLETED`) to
+`.checkpoints/learningInstance.checkpoint.json`, including everything
+downstream steps need (token + expiry, instance ID/name/status/payload).
+
+- **On failure**, `afterAll` deliberately does **not** delete the created
+  instance or clear the checkpoint — it logs that it's preserving state for
+  the next run.
+- **On rerun**, `beforeAll` loads the checkpoint and each `test.step()`
+  checks `checkpointManager.hasCheckpoint(...)` before doing work: a still-valid
+  token skips re-authentication, an already-created instance is reused
+  instead of creating a duplicate. This was verified end-to-end: a run
+  forced to fail right after instance creation left the instance and
+  checkpoint in place, and the very next (normal) run picked up exactly
+  where it left off, validated the reused instance, and only then cleaned up.
+- **On a fully successful run**, `afterAll` deletes the test instance and
+  clears the checkpoint file — every clean run starts from a blank slate.
+
+### Isolation from Use Case 1
+
+- **One dedicated folder**: every file this use case needs — API clients,
+  context/checkpoint, validators, retry/logging/config utils, and the test
+  itself — lives under `api-automation/`. Use Case 1's code
+  (`pages/`, `fixtures/`, `config/`, `utils/`) lives entirely outside it.
+  There is no shared or same-named directory between the two use cases.
+- Separate Playwright config (`playwright.api.config.ts`): no `globalSetup`,
+  no `storageState`, no browser `projects` — every test uses the built-in
+  `request` fixture (`APIRequestContext`), never a `page`.
+- `playwright.config.ts` (UI) has `testDir: './tests'`, which structurally
+  cannot see `api-automation/` — no `testIgnore` workaround needed.
+- No imports from `pages/`, `fixtures/baseFixture.ts`, or any Use Case 1 spec
+  — everything under `api-automation/` is new, self-contained code.
+- Own reporters (`playwright-report-api/`, `test-results/api-junit.xml`),
+  own `outputDir` (`test-results-api/`) — no shared report artifacts with
+  Use Case 1's `reports/` custom HTML reporter.

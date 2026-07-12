@@ -8,6 +8,12 @@ import { environment } from './config/environment';
 export default defineConfig({
   testDir: './tests',
   /*
+   * Use Case 2's API automation module lives entirely under
+   * `api-automation/` (its own tests, page-equivalent classes, and
+   * config — see playwright.api.config.ts) — a directory this config never
+   * scans, so no testIgnore is needed to keep the two suites apart.
+   */
+  /*
    * Log in exactly once for the whole run and reuse that session (see
    * global-setup.ts) instead of each test performing its own UI login.
    * The target app rejects concurrent/rapid-succession logins for one
