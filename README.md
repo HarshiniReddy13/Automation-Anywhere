@@ -8,10 +8,10 @@ This repository contains Playwright + TypeScript automation for two assignment u
 
 ```
 .
-├── form-automation/       # Use Case 1 (UI)
-├── api-automation/        # Use Case 2 (API)
+├── form-automation/       # Use Case 1 - Form with Rules Builder (UI Automation)
+├── api-automation/        # Use Case 2 - Learning Instance API Flow (API Automation)
 ├── reporting/              # Shared custom HTML reporter
-├── reports/                # Generated HTML reports (gitignored)
+├── reports/                # Generated HTML reports 
 ├── package.json
 ├── playwright.config.ts       # Use Case 1 config
 ├── playwright.api.config.ts   # Use Case 2 config
