@@ -10,7 +10,6 @@ dist/
 .auth/
 # Self-contained HTML reports generated per execution by CustomHtmlReporter;
 # can embed large base64 video/screenshots, and a new file is written every run.
-reports/
 # Runtime checkpoint state for the API automation module (context/CheckpointManager.ts) — regenerated every run.
 .checkpoints/
 .DS_Store

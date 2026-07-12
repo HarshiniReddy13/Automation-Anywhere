@@ -39,11 +39,36 @@ npx playwright install
 
 Create a `.env` file:
 
+```bash
+# Target environment (dev | staging | prod)
+TEST_ENV=dev
+
+# Base URL of the Automation Anywhere instance
+BASE_URL=https://community.cloud.automationanywhere.digital
+
+# Login credentials (used by both use cases)
+AA_USERNAME=your.username@example.com
+AA_PASSWORD=your-password
+
+# Run browsers headless (false to watch tests execute)
+HEADLESS=true
+
+# --- Use Case 1 (UI) timeouts, in ms ---
+DEFAULT_TIMEOUT=60000       # General default timeout
+ACTION_TIMEOUT=30000        # Timeout for individual UI actions (click, fill, etc.)
+NAVIGATION_TIMEOUT=60000    # Timeout for page navigations
+EXPECT_TIMEOUT=20000        # Timeout for assertions
+
+# --- Use Case 2 (API) settings ---
+API_REQUEST_TIMEOUT_MS=30000          # Timeout per API request
+API_MAX_RETRY_ATTEMPTS=3              # Max attempts for transient/failed requests
+API_RETRY_BASE_DELAY_MS=500           # Starting delay between retries (exponential backoff)
+API_RETRY_MAX_DELAY_MS=8000           # Maximum delay between retries
+API_MAX_RESPONSE_TIME_MS=10000        # Response time threshold used in assertions
+API_TOKEN_EXPIRY_BUFFER_SECONDS=60    # Re-authenticate this many seconds before token expiry
 ```
-AA_USERNAME=your_username
-AA_PASSWORD=your_password
-BASE_URL=your_environment_url
-```
+
+Only `AA_USERNAME`, `AA_PASSWORD`, and `BASE_URL` are required — all other values have working defaults.
 
 ---
 
