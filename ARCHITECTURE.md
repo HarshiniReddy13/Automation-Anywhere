@@ -1,95 +1,125 @@
 # Architecture
 
-Technical deep-dive behind the two use cases in this repository. The [README](README.md) covers how to run things; this document covers how they're built and why.
+Technical notes on how the two use cases are built. See [README.md](README.md) for how to run them.
 
 ---
 
-## 1. Repository layout
+## Repository Layout
 
 ```
-form-automation/         # Use Case 1 — UI automation (fully self-contained)
-├── config/environment.ts    # Typed .env reader
+form-automation/          # Use Case 1 — UI automation
+├── config/                  # Typed .env reader
 ├── global-setup.ts          # One-time login for the whole run
 ├── pages/                   # Page Object Model
-├── fixtures/baseFixture.ts  # Injects page objects + StepRecorder into tests
+├── fixtures/                # Injects page objects + recorder into tests
 ├── utils/                   # Constants, helpers, test data
-└── tests/rulesBuilder.spec.ts
+└── tests/
 
-api-automation/          # Use Case 2 — API automation (fully self-contained)
-├── api/                     # ApiClient, AuthenticationApi, LearningInstanceApi
-├── context/                 # ExecutionContext + CheckpointManager
-├── validators/              # ResponseValidator, SchemaValidator
-├── utils/                   # RetryHelper, ApiLogger, ConfigManager
-├── pages/                   # UI Verification Layer (read-only browser checks)
-└── tests/learningInstance.spec.ts
+api-automation/            # Use Case 2 — API automation
+├── api/                      # ApiClient, AuthenticationApi, LearningInstanceApi
+├── context/                  # ExecutionContext + CheckpointManager
+├── validators/               # Response & schema validators
+├── utils/                    # RetryHelper, ApiLogger, ConfigManager
+├── pages/                    # UI Verification Layer (read-only)
+└── tests/
 
-reporting/                # Shared reporting infrastructure only
-├── types.ts
-├── StepRecorder.ts          # Per-test data recorder
-├── CustomHtmlReporter.ts    # Playwright Reporter, merges both use cases
-└── htmlTemplate.ts          # HTML/CSS/JS generator
-
-playwright.config.ts       # Use Case 1's config
-playwright.api.config.ts   # Use Case 2's config
+reporting/                 # Shared reporting infrastructure only
+├── StepRecorder.ts           # Per-test data recorder
+├── CustomHtmlReporter.ts     # Merges both use cases into one report
+└── htmlTemplate.ts           # HTML/CSS/JS generator
 ```
 
-**Isolation rule:** `form-automation/` and `api-automation/` never import from each other. Each owns its full stack — page objects, config, utilities, tests. The only shared code is `reporting/`, which is infrastructure (how results are displayed), not business logic. This was a deliberate restructuring so a reviewer can look at either folder in isolation and see the complete picture for that use case.
+**Isolation rule:** `form-automation/` and `api-automation/` never import from each other. Each owns its full stack. Only `reporting/` is shared, and it's infrastructure, not business logic.
 
 ---
 
-## 2. Use Case 1 — Form with Rules Builder (UI)
+## Use Case 1 — Form with Rules Builder
 
-**Pattern:** Page Object Model. Specs (`tests/rulesBuilder.spec.ts`) only sequence steps; all selectors and assertions live in `pages/`.
+**Pattern:** Page Object Model — specs sequence steps, page objects own selectors and assertions.
 
-**Shared session, not per-test login.** The target app enforces one session per account (its JWT carries `multipleLogin: false`) and is sensitive to rapid logins. `global-setup.ts` logs in once before the run starts and saves the session to `.auth/storageState.json`; every test starts already authenticated. This is why `playwright.config.ts` forces `workers: 1` / `fullyParallel: false` unconditionally — a shared session can't safely be used by two workers at once. A single retry is safe because it reuses the saved session instead of triggering a fresh login.
+**Shared session, not per-test login**
+- The app allows only one active session per account and is sensitive to rapid logins.
+- `global-setup.ts` logs in once per run and saves the session to `.auth/storageState.json`.
+- Every test starts already authenticated.
+- Because of this, `playwright.config.ts` forces `workers: 1` and `fullyParallel: false`.
 
-**Resilient selectors.** The app's "Rio" component library has real accessibility gaps (missing ARIA roles/labels) and non-obvious behaviors (progressive-disclosure dropdowns, auto-collapsing rule cards, a value field that can silently discard input during a component remount). Every workaround in `RulesBuilderPage.ts` / `FormDesignerPage.ts` was found by driving the live app, not guessed — locators favor semantic queries with fallbacks (`getByRole(...).or(...)`) over brittle CSS.
+**Resilient selectors**
+- The app's "Rio" components have accessibility gaps and quirky behaviors (progressive-disclosure dropdowns, auto-collapsing rule cards).
+- All workarounds were found by driving the live app, not guessed.
+- Locators prefer semantic queries with fallbacks over brittle CSS.
 
-**Timing.** Timeouts are set generously (see `.env` values) because the live backend has measured 5-8s+ post-login bootstrap and other real variability — this is a tuning decision based on observed behavior, not arbitrary padding.
-
----
-
-## 3. Use Case 2 — Learning Instance API Flow
-
-**`ApiClient`** wraps Playwright's `APIRequestContext`. Every call automatically logs request/response detail (redacted — see §5), retries transient failures, measures response time, and normalizes the result so tests never touch Playwright's raw response object.
-
-**Retry logic (`RetryHelper`)** only retries failures classified as transient: no status code (network-level failure) or one of `408/425/429/500/502/503/504`. A 400 validation error fails immediately — retrying a request that's wrong won't make it right. Backoff is exponential with jitter, capped at `API_RETRY_MAX_DELAY_MS`.
-
-**No fixed sleeps.** `RetryHelper.pollUntil()` polls a condition until it's true or a timeout elapses, for any wait on eventual backend state.
-
-**Checkpoint / resume (`CheckpointManager`).** Each successful step (`AUTHENTICATION` → `LEARNING_INSTANCE_CREATED` → `VALIDATION_COMPLETED`) is written to `.checkpoints/learningInstance.checkpoint.json` along with the data downstream steps need (token+expiry, instance id/name/status). On failure, cleanup deliberately does *not* delete the instance or clear the checkpoint. On the next run, each step checks `hasCheckpoint(...)` first — a valid token skips re-auth, an existing instance is reused instead of duplicated. On a fully successful run, the instance is deleted and the checkpoint cleared, so every clean run starts fresh.
-
-**UI Verification Layer (Step 5, extension beyond the base assignment).** After the instance is created and validated via API, the test logs into the real UI with a genuine browser and confirms the same instance is visible with matching name/status/document type — proving the write reached the frontend, not just the database. `api-automation/pages/` is read-only by design (no create/edit methods); creation stays 100% API-driven.
-
-**Session-collision caveat.** The same `multipleLogin: false` constraint from Use Case 1 applies here too, but differently: logging into the UI in Step 5 silently invalidates the API token obtained in Step 1 — its next use returns `401 IQUM001.user.auth.token.validation.failed`. Rather than touch the existing cleanup logic, the UI-verification step re-authenticates via the API right after its assertions pass (with a `finally`-block fallback for failure paths), so cleanup always has a valid token regardless of where the test fails.
-
-**Endpoint behavior deviation.** `POST /cognitive/v3/learninginstances` returns `200 OK` on success, not `201 Created` as might be assumed from REST convention — confirmed via live browser network capture and a direct API call. Validators assert the real observed value.
+**Timing**
+- Timeouts are set generously based on measured backend behavior (5–8s+ post-login bootstrap), not arbitrary padding.
 
 ---
 
-## 4. Reporting system
+## Use Case 2 — Learning Instance API Flow
 
-Both use cases run as **two entirely separate `npx playwright test` invocations**, under two independent configs — there is no single process that sees both suites at once. Getting one combined report out of that required a persist-and-merge design:
+**`ApiClient`**
+Thin wrapper around Playwright's `APIRequestContext`. Every call logs, retries, times, and normalizes the response automatically.
 
-1. During a test, `StepRecorder` accumulates a `ReportMeta` JSON blob (steps, API calls, named screenshots) in memory and attaches it — plus raw screenshot PNGs — to Playwright's `testInfo`. Attachments are the only channel that reliably survives from a test worker process back to the reporter.
-2. `CustomHtmlReporter.onTestEnd()` reads those attachments back, resolves screenshots/video to base64, and tags each test with its use case by mapping the spec file name (`rulesBuilder.spec.ts` → UC1, `learningInstance.spec.ts` → UC2).
-3. `onEnd()` writes this run's tests to `reports/.data/<UC1|UC2>.json`, then reads whatever snapshot exists for the *other* use case and merges it in before generating the final HTML.
+**Retry logic (`RetryHelper`)**
+- Retries only transient failures: network errors or `408 / 425 / 429 / 500 / 502 / 503 / 504`.
+- Non-transient errors (e.g. `400`) fail immediately — no point retrying a bad request.
+- Exponential backoff with jitter, capped by `API_RETRY_MAX_DELAY_MS`.
+- No fixed sleeps anywhere — `pollUntil()` polls a condition until true or timeout.
 
-This means either suite can be (re)run independently, in any order, and the report always reflects the latest known state of both. A use case that hasn't run yet renders as a "not run" placeholder rather than an error; a failure in one use case's tests can't affect the other's already-persisted section.
+**Checkpoint / resume (`CheckpointManager`)**
 
-**Named screenshots vs. step screenshots.** `StepRecorder.runStep()` captures a before/after pair for every wrapped action (available for deeper debugging but not rendered as its own report section). `captureNamedScreenshot(label)` is separate — an explicit, curated milestone screenshot (e.g. "Login Successful", "Rules Saved Successfully") that feeds the report's "Key Screenshots" gallery. The gallery is deliberately built from these curated calls, not every action, to stay evaluator-readable.
+| Step | Checkpoint |
+|---|---|
+| Authenticate | `AUTHENTICATION` |
+| Create instance | `LEARNING_INSTANCE_CREATED` |
+| Validate instance | `VALIDATION_COMPLETED` |
 
-**Report content** (final, trimmed form): dashboard stats (date/time, pass/fail/skip counts, pass %), then per-use-case sections with Screen Recording → Key Screenshots → API Validation Summary (UC2 only, one expandable row per operation showing assertions/request/response) → failure detail if applicable. Earlier iterations included execution timelines, per-test log dumps, and a requirement-coverage table; these were deliberately removed to keep the report focused on what an evaluator needs, not what's technically capturable.
+- On failure, the created instance and checkpoint are **kept**, not cleaned up.
+- On rerun, completed steps are skipped and their data reused.
+- On a fully successful run, the instance is deleted and the checkpoint cleared.
+
+**UI Verification Layer (Step 5 — extension beyond the base assignment)**
+- After API creation + validation, logs into the real UI and confirms the same instance is visible with matching data.
+- `api-automation/pages/` is read-only by design — no create/edit methods. Creation stays 100% API-driven.
+
+**Session-collision caveat**
+- Logging into the UI in Step 5 invalidates the API token from Step 1 (`401 IQUM001.user.auth.token.validation.failed` on reuse).
+- The UI-verification step re-authenticates right after its checks pass, with a fallback in a `finally` block, so cleanup always has a valid token.
+
+**Endpoint behavior deviation**
+- `POST /cognitive/v3/learninginstances` returns `200 OK` on success, not `201 Created`.
+- Confirmed via live network capture; validators assert the real observed value.
 
 ---
 
-## 5. Security: redaction
+## Reporting System
 
-`ApiLogger.redactBody()` masks `password`/`token`/etc. fields before a request or response body is logged to the console **or** stored via `StepRecorder.logApiCall()`. This exists because of a real bug caught during development: the Authenticate call's request body (containing the plaintext password) was briefly stored unredacted and appeared in the HTML report's expandable API Validation Summary row. Fixed by applying the same redaction function at the point data enters the report, not just at the console-logging point — verified by grepping generated report HTML for the real credential string.
+Use Case 1 and Use Case 2 run as **two separate `npx playwright test` invocations** — no single process sees both. One combined report is produced via persist-and-merge:
+
+1. `StepRecorder` accumulates steps, API calls, and named screenshots per test, and attaches them to Playwright's `testInfo`.
+2. `CustomHtmlReporter` reads those attachments back and tags each test with its use case (by spec file name).
+3. On `onEnd()`, this run's data is saved to `reports/.data/<UC1|UC2>.json`, and the other use case's latest saved snapshot is merged in before generating the HTML.
+
+This means either suite can be (re)run independently, in any order, and the report always reflects the latest known state of both.
+
+**Screenshots**
+- Every wrapped action captures a before/after pair (available for debugging, not shown as its own report section).
+- `captureNamedScreenshot(label)` captures curated milestones only (e.g. "Login Successful") — these populate the "Key Screenshots" gallery.
+
+**Final report sections**
+Dashboard stats → per-use-case Screen Recording → Key Screenshots → API Validation Summary (UC2 only) → failure detail if applicable. Execution timelines, log dumps, and a requirement-coverage table were deliberately removed to keep the report evaluator-focused.
 
 ---
 
-## 6. Known non-obvious bugs fixed along the way
+## Security: Redaction
 
-- **`titlePath` index-shift**: `playwright.api.config.ts` has an unnamed default project (`project.name === ''`). `titlePath().filter(Boolean)` silently drops that empty segment, shifting every subsequent index and causing Use Case 2's tests to be tagged `UNASSIGNED` instead of `UC2`. Fixed by deriving the file name from `test.location.file` and the suite title from `test.parent.title` instead of parsing `titlePath` by index.
-- **Browser field rendering blank**: `project?.use?.browserName ?? project?.name ?? 'unknown'` used `??`, which doesn't fall through on a falsy-but-non-nullish empty string (the unnamed default project's `.name`). Switched to `||`.
+`ApiLogger.redactBody()` masks `password` / `token` fields before any request or response body is logged or stored.
+
+This exists because of a real bug caught during development — a login request body was briefly stored unredacted and appeared in the report. Fixed by applying redaction at the point data enters the report, not just at the console-logging point.
+
+---
+
+## Notable Bugs Fixed
+
+| Issue | Cause | Fix |
+|---|---|---|
+| UC2 tests tagged `UNASSIGNED` instead of `UC2` | `titlePath().filter(Boolean)` silently dropped an empty project name, shifting array indices | Derive file name from `test.location.file`, suite title from `test.parent.title` |
+| "Browser" field rendered blank | `??` doesn't fall through on a falsy-but-non-nullish empty string | Switched to `\|\|` |
