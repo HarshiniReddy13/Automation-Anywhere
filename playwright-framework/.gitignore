@@ -12,3 +12,4 @@ dist/
 # can embed large base64 video/screenshots, and a new file is written every run.
 reports/
 .DS_Store
+**/.DS_Store
