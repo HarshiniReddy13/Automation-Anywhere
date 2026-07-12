@@ -114,12 +114,3 @@ Dashboard stats → per-use-case Screen Recording → Key Screenshots → API Va
 `ApiLogger.redactBody()` masks `password` / `token` fields before any request or response body is logged or stored.
 
 This exists because of a real bug caught during development — a login request body was briefly stored unredacted and appeared in the report. Fixed by applying redaction at the point data enters the report, not just at the console-logging point.
-
----
-
-## Notable Bugs Fixed
-
-| Issue | Cause | Fix |
-|---|---|---|
-| UC2 tests tagged `UNASSIGNED` instead of `UC2` | `titlePath().filter(Boolean)` silently dropped an empty project name, shifting array indices | Derive file name from `test.location.file`, suite title from `test.parent.title` |
-| "Browser" field rendered blank | `??` doesn't fall through on a falsy-but-non-nullish empty string | Switched to `\|\|` |
