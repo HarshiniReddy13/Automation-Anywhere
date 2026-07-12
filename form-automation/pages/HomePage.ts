@@ -1,7 +1,7 @@
 import { Locator, Page, expect } from '@playwright/test';
 import { BasePage } from './BasePage';
 import { ROUTES } from '../utils/constants';
-import { StepRecorder } from '../reporting/StepRecorder';
+import { StepRecorder } from '../../reporting/StepRecorder';
 
 /**
  * HomePage / Dashboard — the landing surface after a successful login and the

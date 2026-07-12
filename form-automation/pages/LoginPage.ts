@@ -2,7 +2,7 @@ import { Locator, Page, expect } from '@playwright/test';
 import { BasePage } from './BasePage';
 import { ROUTES, API } from '../utils/constants';
 import { environment } from '../config/environment';
-import { StepRecorder } from '../reporting/StepRecorder';
+import { StepRecorder } from '../../reporting/StepRecorder';
 
 /**
  * LoginPage — encapsulates the Community Edition login screen.

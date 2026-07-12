@@ -1,6 +1,6 @@
 import { Locator, Page, expect } from '@playwright/test';
 import { BasePage } from './BasePage';
-import { StepRecorder } from '../reporting/StepRecorder';
+import { StepRecorder } from '../../reporting/StepRecorder';
 
 /**
  * AutomationPage — the Automation listing surface where new automations

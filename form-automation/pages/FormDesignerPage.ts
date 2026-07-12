@@ -3,7 +3,7 @@ import { BasePage } from './BasePage';
 import { API, ComponentType, DESIGNER_FRAME, SUCCESS_STATUS } from '../utils/constants';
 import { TextboxConfig } from '../utils/testData';
 import { dragAndDrop, setFieldValue } from '../utils/helpers';
-import { StepRecorder } from '../reporting/StepRecorder';
+import { StepRecorder } from '../../reporting/StepRecorder';
 
 /**
  * FormDesignerPage — the low-code canvas where components are dragged from a

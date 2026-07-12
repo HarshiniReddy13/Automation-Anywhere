@@ -1,12 +1,17 @@
 import { defineConfig, devices } from '@playwright/test';
-import { environment } from './config/environment';
+import { environment } from './form-automation/config/environment';
 
 /**
  * Playwright Test configuration.
  * See https://playwright.dev/docs/test-configuration
+ *
+ * Use Case 1's code lives entirely under `form-automation/` (page objects,
+ * fixtures, utils, config, tests, global-setup) — the same self-contained
+ * namespacing pattern `api-automation/` uses for Use Case 2. This config
+ * file itself stays at the repo root, same as playwright.api.config.ts.
  */
 export default defineConfig({
-  testDir: './tests',
+  testDir: './form-automation/tests',
   /*
    * Use Case 2's API automation module lives entirely under
    * `api-automation/` (its own tests, page-equivalent classes, and
@@ -22,7 +27,7 @@ export default defineConfig({
    * with the previous session's ~20 min token still being technically
    * live. A single shared session removes that failure mode entirely.
    */
-  globalSetup: './global-setup.ts',
+  globalSetup: './form-automation/global-setup.ts',
   /*
    * Still force serial, single-worker execution regardless of CI: with a
    * shared session, two workers acting on the same authenticated context's

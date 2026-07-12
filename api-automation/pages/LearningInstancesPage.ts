@@ -1,4 +1,4 @@
-import { FrameLocator, Locator, Page, TestInfo, expect } from '@playwright/test';
+import { FrameLocator, Locator, Page, expect } from '@playwright/test';
 
 /**
  * CSS selector for the iframe that hosts the Learning Instances module —
@@ -157,20 +157,6 @@ export class LearningInstancesPage {
     expect(snapshot.documentType, 'UI-displayed Document Type should be "Invoices"').toBe(expected.documentType);
 
     return snapshot;
-  }
-
-  // --- Screenshots (flow into Playwright's own HTML report via testInfo.attach) ---
-
-  /**
-   * Screenshots are attached via Playwright's own `testInfo.attach()`
-   * rather than Use Case 1's custom `StepRecorder` — this module doesn't
-   * use that reporter (`playwright.api.config.ts` has its own, independent
-   * reporter list). `testInfo.attach()` embeds directly into the standard
-   * `html` reporter already configured there (`playwright-report-api/`).
-   */
-  async captureScreenshot(testInfo: TestInfo, name: string): Promise<void> {
-    const buffer = await this.page.screenshot({ fullPage: true });
-    await testInfo.attach(name, { body: buffer, contentType: 'image/png' });
   }
 
   // --- Failure diagnostics -----------------------------------------------------

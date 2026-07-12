@@ -9,7 +9,7 @@ import {
 } from '../utils/constants';
 import { ConditionConfig, ActionConfig, RuleConfig, TextboxConfig } from '../utils/testData';
 import { selectFromCustomDropdown, fillReliably } from '../utils/helpers';
-import { StepRecorder } from '../reporting/StepRecorder';
+import { StepRecorder } from '../../reporting/StepRecorder';
 
 /**
  * RulesBuilderPage — the "Form rules" tab of the designer. Like the designer

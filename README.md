@@ -23,7 +23,7 @@ system built on top of Playwright's own reporter API.
 > 10. Use the rule card context menu to add a second rule below (Rule2) and a third rule (Rule3).
 > 11. Save the form and verify all rules persist.
 
-Implemented in [`tests/rulesBuilder.spec.ts`](tests/rulesBuilder.spec.ts) (main test: *"creates a form, configures textboxes, builds three rules, and persists them"*), with every step's UI logic and assertions living in the Page Objects under [`pages/`](pages/), per the expectations below.
+Implemented in [`form-automation/tests/rulesBuilder.spec.ts`](form-automation/tests/rulesBuilder.spec.ts) (main test: *"creates a form, configures textboxes, builds three rules, and persists them"*), with every step's UI logic and assertions living in the Page Objects under [`form-automation/pages/`](form-automation/pages/), per the expectations below.
 
 ### Expectations → where they're enforced
 
@@ -61,36 +61,44 @@ No UI framework, no external test-data or reporting services — everything ship
 
 ```
 playwright-framework/
-├── config/
-│   └── environment.ts          # Typed, env-driven configuration
-├── fixtures/
-│   └── baseFixture.ts          # Page Object fixtures + automatic report/log capture
-├── global-setup.ts             # Logs in once for the whole run, saves session to .auth/
-├── pages/
-│   ├── BasePage.ts             # Shared behavior + *WithReport() wrapper methods
-│   ├── LoginPage.ts
-│   ├── HomePage.ts
-│   ├── AutomationPage.ts
-│   ├── FormDesignerPage.ts
-│   └── RulesBuilderPage.ts
-├── reporting/                  # Custom self-contained HTML reporting system
+├── form-automation/             # Use Case 1 — everything lives in here, nowhere else
+│   ├── config/
+│   │   └── environment.ts          # Typed, env-driven configuration
+│   ├── fixtures/
+│   │   └── baseFixture.ts          # Page Object fixtures + automatic report/log capture
+│   ├── global-setup.ts             # Logs in once for the whole run, saves session to .auth/
+│   ├── pages/
+│   │   ├── BasePage.ts             # Shared behavior + *WithReport() wrapper methods
+│   │   ├── LoginPage.ts
+│   │   ├── HomePage.ts
+│   │   ├── AutomationPage.ts
+│   │   ├── FormDesignerPage.ts
+│   │   └── RulesBuilderPage.ts
+│   ├── tests/
+│   │   ├── rulesBuilder.spec.ts    # Use Case 1 E2E workflow
+│   │   └── reportingDemo.spec.ts   # Sample test demonstrating the report wrappers
+│   └── utils/
+│       ├── constants.ts            # Routes, API patterns, enums, timeouts
+│       ├── helpers.ts              # Reusable, page-agnostic helpers (drag-drop, reliable fill, ...)
+│       └── testData.ts             # Centralized test data + unique form-name generator
+├── api-automation/               # Use Case 2 — see its own section below
+├── reporting/                    # Custom self-contained HTML reporting system, shared by both use cases
 │   ├── types.ts
 │   ├── StepRecorder.ts         # Per-test step/log/screenshot recorder
 │   ├── CustomHtmlReporter.ts   # Playwright Reporter implementation
 │   └── htmlTemplate.ts         # Report HTML/CSS/JS generator
-├── tests/
-│   ├── rulesBuilder.spec.ts    # Use Case 1 E2E workflow
-│   └── reportingDemo.spec.ts   # Sample test demonstrating the report wrappers
-├── utils/
-│   ├── constants.ts            # Routes, API patterns, enums, timeouts
-│   ├── helpers.ts              # Reusable, page-agnostic helpers (drag-drop, reliable fill, ...)
-│   └── testData.ts             # Centralized test data + unique form-name generator
 ├── reports/                    # Generated HTML reports (gitignored, one file per run)
-├── playwright.config.ts
+├── playwright.config.ts        # Use Case 1's config (repo root, like playwright.api.config.ts)
+├── playwright.api.config.ts    # Use Case 2's config
 ├── tsconfig.json
 ├── package.json
 └── .env.example
 ```
+
+`form-automation/` and `api-automation/` follow the same pattern deliberately: each use case's
+entire codebase lives under one dedicated top-level folder, with only its own Playwright config
+and the shared `reporting/` module living outside it — no folder name (`pages/`, `utils/`, etc.)
+is ambiguous about which use case it belongs to.
 
 ---
 
@@ -120,7 +128,7 @@ cp .env.example .env
 npm run test:rules                              # Use Case 1 suite, Chromium (recommended)
 npm run test:rules -- --project=chromium         # same, explicit
 npm run test:rules -- --project=chromium --headed  # watch it run in a real browser window
-npx playwright test tests/reportingDemo.spec.ts   # sample test for the custom reporter
+npx playwright test form-automation/tests/reportingDemo.spec.ts   # sample test for the custom reporter
 npm test                                          # full tests/ directory, all 3 browser projects
 npm run test:ui                                   # Playwright UI mode (interactive)
 npm run report                                    # open Playwright's own last HTML report
@@ -142,7 +150,7 @@ npm run report                                    # open Playwright's own last H
 
 The target backend enforces **one session per account** (its auth token carries `multipleLogin: false`) and is sensitive to rapid/concurrent logins. To work with this rather than against it:
 
-- [`global-setup.ts`](global-setup.ts) logs in **once** per `npx playwright test` invocation and saves the authenticated session to `.auth/storageState.json` (gitignored — it's a live token, not a secret to commit). Every test then starts already authenticated; no test performs its own UI login.
+- [`form-automation/global-setup.ts`](form-automation/global-setup.ts) logs in **once** per `npx playwright test` invocation and saves the authenticated session to `.auth/storageState.json` (gitignored — it's a live token, not a secret to commit). Every test then starts already authenticated; no test performs its own UI login.
 - `playwright.config.ts` forces `workers: 1` / `fullyParallel: false` **unconditionally** (not just on CI) — this is a single shared account building a single live form, so nothing here can safely run in parallel.
 - `retries: 1` locally / `2` on CI — safe because a retry reuses the existing session rather than triggering a fresh login.
 
@@ -150,7 +158,7 @@ The target backend enforces **one session per account** (its auth token carries 
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `TEST_ENV` | `dev` \| `staging` \| `prod` (selects a URL block in `config/environment.ts`) | `dev` |
+| `TEST_ENV` | `dev` \| `staging` \| `prod` (selects a URL block in `form-automation/config/environment.ts`) | `dev` |
 | `BASE_URL` | Application base URL | `community.cloud.automationanywhere.digital` |
 | `AA_USERNAME` | Login username/email | — (required) |
 | `AA_PASSWORD` | Login password | — (required) |
@@ -168,7 +176,7 @@ The committed defaults above are Playwright's own; this project's own `.env`/`.e
 
 ### Known application behaviors worth knowing before touching selectors
 
-The target app uses a custom "Rio" design-system component library with real accessibility gaps (missing ARIA roles, labels not programmatically associated with inputs) and several non-obvious UI behaviors (progressive-disclosure dropdowns, auto-collapsing rule cards, a value field that can silently discard input during a component remount). Every one of these was found by driving the live app and inspecting captured DOM output, not guessed — see the "confirmed via a live capture" comments throughout [`pages/RulesBuilderPage.ts`](pages/RulesBuilderPage.ts) and [`pages/FormDesignerPage.ts`](pages/FormDesignerPage.ts) for the specifics and reasoning behind each locator choice.
+The target app uses a custom "Rio" design-system component library with real accessibility gaps (missing ARIA roles, labels not programmatically associated with inputs) and several non-obvious UI behaviors (progressive-disclosure dropdowns, auto-collapsing rule cards, a value field that can silently discard input during a component remount). Every one of these was found by driving the live app and inspecting captured DOM output, not guessed — see the "confirmed via a live capture" comments throughout [`form-automation/pages/RulesBuilderPage.ts`](form-automation/pages/RulesBuilderPage.ts) and [`form-automation/pages/FormDesignerPage.ts`](form-automation/pages/FormDesignerPage.ts) for the specifics and reasoning behind each locator choice.
 
 **Verified-stable timing baseline** (Chromium, headless or headed, no `slowMo`): the main E2E test runs in ~25-35s, the value-field-visibility test in ~20-27s. If a change pushes either test meaningfully past that range, suspect the change first before assuming it's just "the app being slow."
 
@@ -180,7 +188,7 @@ The Page Objects use **resilient, semantic-first locators** with fallbacks
 (`getByRole(...).or(...)`), because the exact DOM of a low-code designer can
 vary by tenant/release. If a locator needs tuning for your environment:
 
-1. Open the relevant Page Object under `pages/`.
+1. Open the relevant Page Object under `form-automation/pages/`.
 2. Locators are declared at the top of each class (or in small private
    accessor methods) — update them in one place.
 3. Prefer adding a stable `data-testid` in the app and switching to
@@ -196,7 +204,7 @@ Every run produces one self-contained `reports/TestExecution_<timestamp>.html`
 — no external CSS/JS/image files, safe to email or archive as-is.
 
 - **Automatic, no per-test code required**: the `recorder` fixture in
-  [`fixtures/baseFixture.ts`](fixtures/baseFixture.ts) captures console logs,
+  [`form-automation/fixtures/baseFixture.ts`](form-automation/fixtures/baseFixture.ts) captures console logs,
   page errors, network failures, dialogs, and every XHR/fetch call (method,
   URL, status, timing, request/response body) for *every* test, with zero
   opt-in.
@@ -206,7 +214,7 @@ Every run produces one self-contained `reports/TestExecution_<timestamp>.html`
   `hoverWithReport`, `dblClickWithReport`, `rightClickWithReport`,
   `dragAndDropWithReport`, `uploadFileWithReport`, `navigateWithReport`,
   `pressKeyWithReport`, `assertWithReport`). See
-  [`tests/reportingDemo.spec.ts`](tests/reportingDemo.spec.ts) for a working
+  [`form-automation/tests/reportingDemo.spec.ts`](form-automation/tests/reportingDemo.spec.ts) for a working
   example. The main `rulesBuilder.spec.ts` suite doesn't use these yet — its
   page objects still call raw Playwright APIs directly, by deliberate choice,
   to avoid destabilizing an already-hard-won-stable suite. Migrating a page
@@ -233,7 +241,7 @@ Every run produces one self-contained `reports/TestExecution_<timestamp>.html`
 - **SOLID / SRP** — `BasePage` holds cross-page behavior; each page owns only
   its screen. Helpers are pure and reusable.
 - **Business logic in Page Objects** — specs sequence steps and read from
-  `utils/testData.ts`; the vast majority of assertions live in the Page
+  `form-automation/utils/testData.ts`; the vast majority of assertions live in the Page
   Objects, with only a couple of simple result checks (e.g. "a Form ID was
   returned") left inline in the spec for readability. No selectors live in
   test files at all.
@@ -250,7 +258,8 @@ A second, **completely independent** automation module in the same repo:
 pure API testing (no browser page) against the Document Automation /
 IQ Bot "Learning Instance" REST endpoints, using Playwright's
 `APIRequestContext`. It shares nothing with Use Case 1's Page Objects,
-fixtures, `global-setup.ts`, or `playwright.config.ts` — see
+fixtures, `global-setup.ts`, or `playwright.config.ts` (all under
+`form-automation/` now) — see
 ["Isolation from Use Case 1"](#isolation-from-use-case-1) below for exactly
 how that's enforced.
 
@@ -273,8 +282,8 @@ this).
 ### Folder structure
 
 Everything for this use case lives under one dedicated top-level folder,
-`api-automation/` — nothing is interleaved with Use Case 1's `pages/`,
-`fixtures/`, `config/`, or `utils/`, not even by directory name:
+`api-automation/` — nothing is interleaved with Use Case 1's `form-automation/`
+folder, not even by directory name:
 
 ```
 playwright-framework/
@@ -296,7 +305,7 @@ playwright-framework/
 │   │   ├── ApiLogger.ts             # PASS/FAIL/WARNING/INFO logs with secret redaction
 │   │   └── ConfigManager.ts         # Independent .env reader for this module
 │   ├── pages/                       # UI Verification Layer (Step 5) — read-only browser checks
-│   │   ├── LoginPage.ts             # UI login (independent of Use Case 1's pages/LoginPage.ts)
+│   │   ├── LoginPage.ts             # UI login (independent of Use Case 1's form-automation/pages/LoginPage.ts)
 │   │   ├── DashboardPage.ts         # Post-login landing; navigates AI -> Document Automation
 │   │   └── LearningInstancesPage.ts # The Learning Instances table: search, locate row, assert, screenshot, diagnose
 │   └── tests/
@@ -305,14 +314,14 @@ playwright-framework/
 └── playwright.api.config.ts      # Independent Playwright config for this module (repo root, like playwright.config.ts)
 ```
 
-**Why `api-automation/pages/` and not a top-level `pages/`**: the top-level
-`pages/` folder already belongs to Use Case 1. Adding Use Case 2's page
-objects there — even under different filenames — would recreate the exact
-"which use case does this file belong to" ambiguity this README's
+**Why `api-automation/pages/` and not a top-level `pages/`**: a shared,
+ambiguous top-level `pages/` (or `utils/`, `fixtures/`, etc.) is exactly the
+"which use case does this file belong to" problem this README's
 ["Isolation from Use Case 1"](#isolation-from-use-case-1) section exists to
-prevent. Keeping them nested under `api-automation/` means the whole
-directory tree stays unambiguous at a glance, consistent with everything
-else in this use case.
+prevent. Both use cases follow the same rule symmetrically — Use Case 1's
+page objects live under `form-automation/pages/`, Use Case 2's under
+`api-automation/pages/` — so the whole repo tree stays unambiguous at a
+glance, with no folder name shared between them.
 
 ### UI Verification Layer (Step 5)
 
@@ -387,8 +396,8 @@ The UI Verification Layer means this suite now launches a real browser too
 Automation live).
 
 `npm test` / `npm run test:rules` (Use Case 1) will **never** pick this up —
-`playwright.config.ts`'s `testDir: './tests'` never scans `api-automation/`
-at all. Conversely, `npm run test:api` (`playwright.api.config.ts`,
+`playwright.config.ts`'s `testDir: './form-automation/tests'` never scans
+`api-automation/` at all. Conversely, `npm run test:api` (`playwright.api.config.ts`,
 `testDir: './api-automation/tests'`) only ever looks inside
 `api-automation/`.
 
@@ -396,7 +405,7 @@ at all. Conversely, `npm run test:api` (`playwright.api.config.ts`,
 
 Reuses the same `.env` file as Use Case 1 (as **data only** —
 `api-automation/utils/ConfigManager.ts` reads it independently of
-`config/environment.ts`, no shared code):
+`form-automation/config/environment.ts`, no shared code):
 
 | Variable | Purpose | Default |
 |---|---|---|
@@ -437,18 +446,20 @@ downstream steps need (token + expiry, instance ID/name/status/payload).
 
 - **One dedicated folder**: every file this use case needs — API clients,
   context/checkpoint, validators, retry/logging/config utils, and the test
-  itself — lives under `api-automation/`. Use Case 1's code
-  (`pages/`, `fixtures/`, `config/`, `utils/`) lives entirely outside it.
-  There is no shared or same-named directory between the two use cases.
+  itself — lives under `api-automation/`. Use Case 1's code lives entirely
+  under `form-automation/`. There is no shared or same-named directory
+  between the two use cases.
 - Separate Playwright config (`playwright.api.config.ts`): no `globalSetup`
   and no `storageState` — Learning Instance creation/validation uses the
   built-in `request` fixture (`APIRequestContext`); the UI Verification
   Layer (Step 5) uses the built-in `page` fixture directly inside the test,
   logging in itself rather than inheriting Use Case 1's shared session.
-- `playwright.config.ts` (UI) has `testDir: './tests'`, which structurally
-  cannot see `api-automation/` — no `testIgnore` workaround needed.
-- No imports from `pages/`, `fixtures/baseFixture.ts`, or any Use Case 1 spec
-  — everything under `api-automation/` is new, self-contained code.
+- `playwright.config.ts` (UI) has `testDir: './form-automation/tests'`,
+  which structurally cannot see `api-automation/` — no `testIgnore`
+  workaround needed.
+- No imports from `form-automation/pages/`, `form-automation/fixtures/baseFixture.ts`,
+  or any Use Case 1 spec — everything under `api-automation/` is new,
+  self-contained code.
 - Own reporters (`playwright-report-api/`, `test-results/api-junit.xml`),
   own `outputDir` (`test-results-api/`) — no shared report artifacts with
   Use Case 1's `reports/` custom HTML reporter.

@@ -30,7 +30,7 @@ test.describe('Automation Anywhere — Form & Rules Builder E2E', () => {
           'rules persist in the correct order after saving.',
       },
     },
-    async ({ loginPage, homePage, automationPage, formDesignerPage, rulesBuilderPage }) => {
+    async ({ loginPage, homePage, automationPage, formDesignerPage, rulesBuilderPage, recorder }) => {
     // 1) Login ---------------------------------------------------------------
     await test.step('Login and land on the dashboard', async () => {
       await loginPage.open();
@@ -41,6 +41,7 @@ test.describe('Automation Anywhere — Form & Rules Builder E2E', () => {
       }
       await loginPage.login();
       await homePage.assertLoaded();
+      await recorder.captureNamedScreenshot('Login Successful');
     });
 
     // 2) Navigate to Automation & create a Form ------------------------------
@@ -50,12 +51,14 @@ test.describe('Automation Anywhere — Form & Rules Builder E2E', () => {
       await automationPage.assertCreateFormVisible();
       await automationPage.createForm(formName);
       await formDesignerPage.assertDesignerOpen();
+      await recorder.captureNamedScreenshot('Form Created');
     });
 
     // 3) Drag two Textboxes onto the canvas ----------------------------------
     await test.step('Drag two Textbox components onto the canvas', async () => {
       await formDesignerPage.addTextboxes(2);
       expect(await formDesignerPage.componentCount()).toBeGreaterThanOrEqual(2);
+      await recorder.captureNamedScreenshot('Textboxes Added to Canvas');
     });
 
     // 4) Configure both textboxes --------------------------------------------
@@ -64,6 +67,7 @@ test.describe('Automation Anywhere — Form & Rules Builder E2E', () => {
         await formDesignerPage.configureTextbox(i, TEXTBOXES[i]);
         await formDesignerPage.assertTextboxConfigured(i, TEXTBOXES[i]);
       }
+      await recorder.captureNamedScreenshot('Textbox Properties Configured');
     });
 
     // 5) Save the form -------------------------------------------------------
@@ -77,6 +81,7 @@ test.describe('Automation Anywhere — Form & Rules Builder E2E', () => {
     await test.step('Navigate to the Rules tab', async () => {
       await formDesignerPage.goToRulesTab();
       await rulesBuilderPage.assertLoaded();
+      await recorder.captureNamedScreenshot('Rule Builder Opened');
     });
 
     // 7) Rule1 with two conditions (AND) and an action -----------------------
@@ -85,6 +90,7 @@ test.describe('Automation Anywhere — Form & Rules Builder E2E', () => {
       await rulesBuilderPage.addRule();
       await rulesBuilderPage.nameRule(0, rule1.name);
       await rulesBuilderPage.assertRuleExpandedWithEdit(rule1.name);
+      await recorder.captureNamedScreenshot('Rule1 Created (Expanded)');
 
       // First condition — Is Not Empty (no value field expected).
       await rulesBuilderPage.addCondition(
@@ -94,6 +100,7 @@ test.describe('Automation Anywhere — Form & Rules Builder E2E', () => {
         rule1.logicalOperator
       );
       await rulesBuilderPage.assertConditionSaved(rule1.name, rule1.conditions[0]);
+      await recorder.captureNamedScreenshot('Condition 1 Added');
 
       // Second condition — Contains (value field expected) joined with AND.
       await rulesBuilderPage.addCondition(
@@ -108,10 +115,12 @@ test.describe('Automation Anywhere — Form & Rules Builder E2E', () => {
         LogicalOperator.And,
         rule1.conditions.length
       );
+      await recorder.captureNamedScreenshot('Condition 2 Added (AND Mode)');
 
       // Action — Set Value on the second textbox.
       await rulesBuilderPage.addAction(rule1.name, rule1.actions[0]);
       await rulesBuilderPage.assertActionSaved(rule1.name, rule1.actions[0]);
+      await recorder.captureNamedScreenshot('Action Added to Rule1');
     });
 
     // 8) Rule2 via context menu "Add Rule Below" -----------------------------
@@ -121,6 +130,7 @@ test.describe('Automation Anywhere — Form & Rules Builder E2E', () => {
       await rulesBuilderPage.nameRule(1, rule2.name);
       await rulesBuilderPage.assertRuleExpandedWithEdit(rule2.name);
       await rulesBuilderPage.buildRule(rule2);
+      await recorder.captureNamedScreenshot('Rule2 Added via Context Menu');
     });
 
     // 9) Rule3 via context menu "Add Rule Below" -----------------------------
@@ -130,16 +140,19 @@ test.describe('Automation Anywhere — Form & Rules Builder E2E', () => {
       await rulesBuilderPage.nameRule(2, rule3.name);
       await rulesBuilderPage.assertRuleExpandedWithEdit(rule3.name);
       await rulesBuilderPage.buildRule(rule3);
+      await recorder.captureNamedScreenshot('Rule3 Added via Context Menu');
     });
 
     // 10) Save rules ---------------------------------------------------------
     await test.step('Save the form with all rules', async () => {
       await rulesBuilderPage.saveRules();
+      await recorder.captureNamedScreenshot('Rules Saved Successfully');
     });
 
     // 11) Verify persistence & ordering --------------------------------------
     await test.step('Verify all rules persist in the correct order', async () => {
       await rulesBuilderPage.assertRulesPersisted(EXPECTED_RULE_ORDER);
+      await recorder.captureNamedScreenshot('All Rules Persisted (Final Validation)');
     });
   });
 });

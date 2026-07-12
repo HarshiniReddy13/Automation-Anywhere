@@ -36,6 +36,7 @@ export class StepRecorder {
     pageErrors: [],
     networkErrors: [],
     dialogs: [],
+    namedScreenshots: [],
   };
   private screenshotSeq = 0;
   private finalized = false;
@@ -62,9 +63,17 @@ export class StepRecorder {
     }
   }
 
-  /** Explicit, one-off screenshot outside the before/after step lifecycle (e.g. on assertion, warning). */
+  /**
+   * Explicit, one-off milestone screenshot outside the before/after step
+   * lifecycle — e.g. "Login Successful", "Form Created". Recorded into
+   * `meta.namedScreenshots` (unlike `captureScreenshot()`'s internal use for
+   * step before/after pairs) so `CustomHtmlReporter` can surface it in the
+   * report's curated "Key Screenshots" gallery.
+   */
   async captureNamedScreenshot(label: string): Promise<{ attachmentName: string; label: string } | undefined> {
-    return this.captureScreenshot(label);
+    const ref = await this.captureScreenshot(label);
+    if (ref) this.meta.namedScreenshots.push(ref);
+    return ref;
   }
 
   /**

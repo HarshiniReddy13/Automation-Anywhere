@@ -17,10 +17,10 @@
     "sourceMap": true,
     "baseUrl": ".",
     "paths": {
-      "@pages/*": ["pages/*"],
-      "@utils/*": ["utils/*"],
-      "@config/*": ["config/*"],
-      "@fixtures/*": ["fixtures/*"]
+      "@pages/*": ["form-automation/pages/*"],
+      "@utils/*": ["form-automation/utils/*"],
+      "@config/*": ["form-automation/config/*"],
+      "@fixtures/*": ["form-automation/fixtures/*"]
     }
   },
   "include": ["**/*.ts"],

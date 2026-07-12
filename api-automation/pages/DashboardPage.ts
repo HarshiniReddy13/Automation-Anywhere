@@ -37,13 +37,24 @@ export class DashboardPage {
     });
   }
 
-  /** Navigate AI -> Document Automation, which opens directly to the Learning Instances list. */
-  async goToLearningInstances(): Promise<void> {
+  /**
+   * Split into two methods (rather than one combined `goToLearningInstances()`)
+   * so the report can show "Navigate to AI" and "Navigate to Learning
+   * Instances" as the two distinct steps the assignment spec lists, instead
+   * of one merged step.
+   */
+
+  /** Expand the left nav's "AI" entry. */
+  async clickAiNav(): Promise<void> {
     await this.aiNavLink.click();
     await expect(
       this.documentAutomationLink,
       '"Document Automation" nav entry should appear once "AI" expands'
     ).toBeVisible({ timeout: 10_000 });
+  }
+
+  /** Click "Document Automation", which opens directly to the Learning Instances list. */
+  async clickDocumentAutomation(): Promise<void> {
     await this.documentAutomationLink.click();
   }
 }

@@ -11,8 +11,8 @@ import { ConfigManager } from './api-automation/utils/ConfigManager';
  * implicit default project uses Chromium).
  *
  * Everything this suite depends on lives under `api-automation/` — a
- * single dedicated folder, entirely separate from Use Case 1's `pages/`,
- * `fixtures/`, `config/`, and `utils/` — so the two use cases never share a
+ * single dedicated folder, entirely separate from Use Case 1's
+ * `form-automation/` folder — so the two use cases never share a
  * directory, not even incidentally.
  */
 const config = ConfigManager.get();
@@ -36,6 +36,17 @@ export default defineConfig({
     ['list'],
     ['html', { open: 'never', outputFolder: 'playwright-report-api' }],
     ['junit', { outputFile: 'test-results/api-junit.xml' }],
+    /*
+     * Same custom reporter class Use Case 1 uses (see playwright.config.ts)
+     * — added so both use cases feed the single, unified
+     * "Automation Anywhere Assignment Report" HTML file. This is shared
+     * reporting *infrastructure*, not shared business logic: no page
+     * objects, API clients, or test logic are imported from Use Case 1.
+     * See CustomHtmlReporter.ts for how two independent `npx playwright
+     * test` runs (this config and playwright.config.ts) still end up
+     * combined into one HTML file.
+     */
+    ['./reporting/CustomHtmlReporter.ts'],
   ],
 
   use: {
@@ -53,6 +64,8 @@ export default defineConfig({
     headless: config.headless,
     viewport: { width: 1600, height: 900 },
     ignoreHTTPSErrors: true,
+    /* So Use Case 2 also gets its own recording (see the "Screen Recording" section of its report). */
+    video: 'on',
   },
 
   outputDir: 'test-results-api/',

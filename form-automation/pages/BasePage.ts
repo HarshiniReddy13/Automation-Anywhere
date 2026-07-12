@@ -1,6 +1,6 @@
 import { Locator, Page, expect } from '@playwright/test';
-import { StepRecorder } from '../reporting/StepRecorder';
-import { StepCategory } from '../reporting/types';
+import { StepRecorder } from '../../reporting/StepRecorder';
+import { StepCategory } from '../../reporting/types';
 import { dragAndDrop } from '../utils/helpers';
 
 /**

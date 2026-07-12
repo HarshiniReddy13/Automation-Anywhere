@@ -1,13 +1,4 @@
-import type {
-  ApiCallRecord,
-  ConsoleLogRecord,
-  DialogRecord,
-  ExecutionSummary,
-  NetworkErrorRecord,
-  PageErrorRecord,
-  ResolvedStep,
-  TestReportEntry,
-} from './types';
+import type { ApiCallRecord, ExecutionSummary, TestReportEntry, UseCaseId } from './types';
 
 /** Escapes text for safe interpolation into HTML (log/error content is arbitrary user/app text). */
 function esc(value: unknown): string {
@@ -34,21 +25,6 @@ function escError(value: unknown): string {
   return esc(stripAnsi(String(value ?? '')));
 }
 
-function formatDuration(ms: number): string {
-  if (ms < 1000) return `${ms}ms`;
-  const totalSeconds = ms / 1000;
-  if (totalSeconds < 60) return `${totalSeconds.toFixed(2)}s`;
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = Math.round(totalSeconds % 60);
-  return `${minutes}m ${seconds}s`;
-}
-
-function formatClock(epochMs: number): string {
-  const d = new Date(epochMs);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-}
-
 function statusBadgeClass(status: string): string {
   switch (status) {
     case 'passed':
@@ -66,35 +42,13 @@ function statusBadgeClass(status: string): string {
   }
 }
 
-function statusIcon(status: string): string {
-  switch (status) {
-    case 'passed':
-      return '✓';
-    case 'failed':
-    case 'timedOut':
-      return '✕';
-    case 'skipped':
-    case 'interrupted':
-      return '⊘';
-    case 'warning':
-      return '!';
-    default:
-      return '•';
-  }
-}
-
-// --- Section renderers -------------------------------------------------------
+// --- Execution Summary -------------------------------------------------------
 
 function renderDashboard(summary: ExecutionSummary): string {
   const cards: Array<[string, string]> = [
     ['Execution Date', esc(summary.executionDate)],
     ['Execution Time', esc(summary.executionTime)],
-    ['Total Duration', formatDuration(summary.totalDurationMs)],
-    ['Browser', esc(summary.browser)],
-    ['Browser Version', esc(summary.browserVersion)],
-    ['Operating System', esc(summary.os)],
-    ['Environment', esc(summary.environment)],
-    ['Total Tests', String(summary.totalTests)],
+    ['Total Test Cases', String(summary.totalTests)],
     ['Passed', String(summary.passed)],
     ['Failed', String(summary.failed)],
     ['Skipped', String(summary.skipped)],
@@ -121,132 +75,102 @@ function renderDashboard(summary: ExecutionSummary): string {
   </section>`;
 }
 
-function renderTimeline(tests: TestReportEntry[]): string {
-  type Entry = { time: number; label: string; testTitle: string; status: string };
-  const entries: Entry[] = [];
-  for (const t of tests) {
-    for (const s of t.steps) {
-      entries.push({ time: s.startTime, label: s.name, testTitle: t.title, status: s.status });
-    }
-  }
-  entries.sort((a, b) => a.time - b.time);
+// --- Key Screenshots -----------------------------------------------------------
 
-  if (entries.length === 0) {
-    return '';
+function renderKeyScreenshots(tests: TestReportEntry[]): string {
+  const shots = tests.flatMap((t) => t.namedScreenshots).filter((s): s is { label: string; base64: string } => !!s.base64);
+
+  if (shots.length === 0) {
+    return `
+    <div class="key-shots">
+      <h3>Key Screenshots</h3>
+      <p class="empty-note">No milestone screenshots captured for this run.</p>
+    </div>`;
   }
 
-  const rows = entries
-    .map(
-      (e) => `
-      <li class="timeline__item">
-        <span class="timeline__time">${formatClock(e.time)}</span>
-        <span class="timeline__dot timeline__dot--${e.status}"></span>
-        <span class="timeline__label">${esc(e.label)}</span>
-        <span class="timeline__test">${esc(e.testTitle)}</span>
-      </li>`
-    )
+  const cardsHtml = shots
+    .map((s) => {
+      const src = `data:image/png;base64,${s.base64}`;
+      return `
+      <button type="button" class="key-shot-card" data-full="${src}" data-caption="${esc(s.label)}">
+        <img src="${src}" alt="${esc(s.label)}" loading="lazy" />
+        <span class="key-shot-card__label">${esc(s.label)}</span>
+      </button>`;
+    })
     .join('');
 
   return `
-  <section class="panel" id="timeline">
-    <h2 class="panel__title">Execution Timeline</h2>
-    <ul class="timeline">${rows}</ul>
-  </section>`;
+  <div class="key-shots">
+    <h3>Key Screenshots</h3>
+    <div class="key-shots__grid">${cardsHtml}</div>
+  </div>`;
 }
 
-function renderScreenshotThumb(label: string, base64?: string): string {
-  if (!base64) return '';
-  const src = `data:image/png;base64,${base64}`;
-  return `
-    <button type="button" class="thumb" data-full="${src}" data-caption="${esc(label)}">
-      <img src="${src}" alt="${esc(label)}" loading="lazy" />
-      <span class="thumb__caption">${esc(label)}</span>
-    </button>`;
-}
+// --- API Validation Summary (Use Case 2 only) -----------------------------------
 
-function renderStep(step: ResolvedStep): string {
-  const errorBlock = step.error
-    ? `<div class="step__error">
-         <div class="step__error-message">${escError(step.error.message)}</div>
-         ${step.error.stack ? `<pre class="step__stack">${escError(step.error.stack)}</pre>` : ''}
-       </div>`
-    : '';
+function renderApiValidationSummary(apiCalls: ApiCallRecord[], sectionId: string): string {
+  const keyCalls = apiCalls.filter((c) => c.operation);
 
-  return `
-  <li class="step step--${step.status}">
-    <div class="step__header">
-      <span class="${statusBadgeClass(step.status)}">${statusIcon(step.status)}</span>
-      <span class="step__category">${esc(step.category)}</span>
-      <span class="step__name">${esc(step.name)}</span>
-      <span class="step__time">${formatClock(step.startTime)}</span>
-      <span class="step__duration">${formatDuration(step.durationMs)}</span>
-    </div>
-    ${step.locatorDescription ? `<div class="step__locator">Target: ${esc(step.locatorDescription)}</div>` : ''}
-    ${errorBlock}
-    <div class="step__shots">
-      ${renderScreenshotThumb('Before', step.beforeScreenshotBase64)}
-      ${renderScreenshotThumb('After', step.afterScreenshotBase64)}
-    </div>
-  </li>`;
-}
+  if (keyCalls.length === 0) {
+    return `
+    <div class="api-summary">
+      <h3>API Validation Summary</h3>
+      <p class="empty-note">No API operations recorded for this run.</p>
+    </div>`;
+  }
 
-function renderApiTable(calls: ApiCallRecord[]): string {
-  if (calls.length === 0) return '<p class="empty-note">No API calls captured.</p>';
-  const rows = calls
-    .map(
-      (c) => `
-      <tr class="${c.failed ? 'api-row--failed' : ''}">
-        <td>${formatClock(c.timestamp)}</td>
+  const rows = keyCalls
+    .map((c, i) => {
+      const rowId = `${sectionId}-api-${i}`;
+      const resultOk = !c.failed;
+      return `
+      <tr class="api-summary__row" data-toggle="${rowId}" role="button" tabindex="0">
+        <td>${esc(c.operation)}</td>
         <td><span class="method-tag">${esc(c.method)}</span></td>
-        <td class="api-url" title="${esc(c.url)}">${esc(c.url)}</td>
-        <td><span class="${c.failed ? 'badge badge--fail' : 'badge badge--pass'}">${c.statusCode}</span></td>
+        <td>${c.statusCode}</td>
         <td>${c.durationMs}ms</td>
-        <td>${c.requestBody ? `<details><summary>view</summary><pre>${esc(c.requestBody).slice(0, 2000)}</pre></details>` : '—'}</td>
-        <td>${c.responseBody ? `<details><summary>view</summary><pre>${esc(c.responseBody).slice(0, 2000)}</pre></details>` : '—'}</td>
-      </tr>`
-    )
+        <td><span class="${resultOk ? 'badge badge--pass' : 'badge badge--fail'}">${resultOk ? 'PASS' : 'FAIL'}</span></td>
+        <td class="api-summary__expand-icon">▾</td>
+      </tr>
+      <tr class="api-summary__detail-row" id="${rowId}">
+        <td colspan="6">
+          <div class="api-summary__detail">
+            ${c.assertions?.length ? `<div class="api-summary__assertions"><strong>Assertions Performed</strong><ul>${c.assertions.map((a) => `<li>${esc(a)}</li>`).join('')}</ul></div>` : ''}
+            <div class="api-summary__payloads">
+              <div><strong>Request Payload</strong><pre>${c.requestBody ? esc(c.requestBody).slice(0, 3000) : '—'}</pre></div>
+              <div><strong>Response Payload</strong><pre>${c.responseBody ? esc(c.responseBody).slice(0, 3000) : '—'}</pre></div>
+            </div>
+          </div>
+        </td>
+      </tr>`;
+    })
     .join('');
 
   return `
-  <table class="data-table">
-    <thead>
-      <tr><th>Time</th><th>Method</th><th>URL</th><th>Status</th><th>Duration</th><th>Request</th><th>Response</th></tr>
-    </thead>
-    <tbody>${rows}</tbody>
-  </table>`;
+  <div class="api-summary">
+    <h3>API Validation Summary</h3>
+    <table class="api-summary__table">
+      <thead>
+        <tr><th>API Operation</th><th>Method</th><th>Status</th><th>Response Time</th><th>Result</th><th></th></tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>`;
 }
 
-function renderLogsPanel(
-  title: string,
-  items: Array<{ timestamp: number; text: string }>,
-  emptyText: string
-): string {
-  if (items.length === 0) {
-    return `<div class="log-group"><h4>${esc(title)}</h4><p class="empty-note">${esc(emptyText)}</p></div>`;
-  }
-  const rows = items
-    .map((i) => `<div class="log-line"><span class="log-line__time">${formatClock(i.timestamp)}</span>${esc(i.text)}</div>`)
-    .join('');
-  return `<div class="log-group"><h4>${esc(title)} (${items.length})</h4>${rows}</div>`;
-}
+// --- Use case sections -----------------------------------------------------
 
-function consoleAsItems(logs: ConsoleLogRecord[]) {
-  return logs.map((l) => ({ timestamp: l.timestamp, text: `[${l.type}] ${l.text}` }));
-}
-function pageErrorsAsItems(errors: PageErrorRecord[]) {
-  return errors.map((e) => ({ timestamp: e.timestamp, text: e.message }));
-}
-function networkErrorsAsItems(errors: NetworkErrorRecord[]) {
-  return errors.map((e) => ({ timestamp: e.timestamp, text: `${e.method} ${e.url} — ${e.failure}` }));
-}
-function dialogsAsItems(dialogs: DialogRecord[]) {
-  return dialogs.map((d) => ({ timestamp: d.timestamp, text: `[${d.type}] ${d.message}` }));
-}
+const USE_CASE_SECTIONS: Array<{ id: Exclude<UseCaseId, 'UNASSIGNED'>; label: string; accent: string }> = [
+  { id: 'UC1', label: 'Use Case 1: Form with Rules Builder (UI Automation)', accent: 'uc1' },
+  { id: 'UC2', label: 'Use Case 2: Learning Instance API Flow (API Automation)', accent: 'uc2' },
+];
 
 function renderFailurePanel(test: TestReportEntry): string {
-  if (test.status !== 'failed' && test.status !== 'timedOut') return '';
   const shot = test.failureScreenshotBase64
-    ? renderScreenshotThumb('Failure screenshot', test.failureScreenshotBase64)
+    ? `<button type="button" class="thumb" data-full="data:image/png;base64,${test.failureScreenshotBase64}" data-caption="Failure screenshot">
+         <img src="data:image/png;base64,${test.failureScreenshotBase64}" alt="Failure screenshot" loading="lazy" />
+         <span class="thumb__caption">Failure screenshot</span>
+       </button>`
     : '';
   return `
   <div class="failure-panel">
@@ -257,108 +181,103 @@ function renderFailurePanel(test: TestReportEntry): string {
   </div>`;
 }
 
-function renderVideo(test: TestReportEntry): string {
-  if (!test.videoBase64) return '';
-  const mime = test.videoMimeType ?? 'video/webm';
+/**
+ * One representative recording per use case — the first test in the group
+ * that has one. A use case with no video (e.g. a run with `video` disabled,
+ * or a use case that hasn't executed yet) simply omits this block rather
+ * than showing an empty/broken player.
+ */
+function renderUseCaseRecording(tests: TestReportEntry[]): string {
+  const withVideo = tests.find((t) => t.videoBase64);
+  if (!withVideo) return '';
+  const mime = withVideo.videoMimeType ?? 'video/webm';
   return `
   <div class="video-block">
-    <h4>Session Recording</h4>
+    <h3>Screen Recording</h3>
     <video controls preload="metadata" class="video-player">
-      <source src="data:${mime};base64,${test.videoBase64}" type="${mime}" />
+      <source src="data:${mime};base64,${withVideo.videoBase64}" type="${mime}" />
       Your browser does not support embedded video playback.
     </video>
   </div>`;
 }
 
-function capitalize(text: string): string {
-  return text ? text.charAt(0).toUpperCase() + text.slice(1) : text;
-}
+/**
+ * One fully self-contained, independently-collapsible use case section:
+ * Screen Recording, Key Screenshots, and (Use Case 2 only) API Validation
+ * Summary — the assignment's key evidence, nothing else. Rendering one
+ * section never reads state from another, so a failure in one use case's
+ * data cannot affect how the other section renders.
+ */
+function renderUseCaseSection(sectionId: 'UC1' | 'UC2', label: string, accent: string, tests: TestReportEntry[]): string {
+  const failed = tests.filter((t) => t.status === 'failed' || t.status === 'timedOut').length;
 
-function renderTestCard(test: TestReportEntry, index: number): string {
-  const stepsHtml = test.steps.length
-    ? `<ul class="step-list">${test.steps.map(renderStep).join('')}</ul>`
-    : '<p class="empty-note">No recorded steps for this test.</p>';
-
-  const searchableText = [test.title, test.suiteTitle, test.description].join(' ').toLowerCase();
+  const body =
+    tests.length === 0
+      ? '<p class="empty-note">This use case has not been executed yet — run its test suite to populate this section.</p>'
+      : `
+    ${renderUseCaseRecording(tests)}
+    ${renderKeyScreenshots(tests)}
+    ${sectionId === 'UC2' ? renderApiValidationSummary(tests.flatMap((t) => t.apiCalls), sectionId) : ''}
+    ${tests.some((t) => t.status === 'failed' || t.status === 'timedOut') ? renderFailurePanel(tests.find((t) => t.status === 'failed' || t.status === 'timedOut')!) : ''}`;
 
   return `
-  <article class="test-card" data-status="${test.status}" data-title="${esc(searchableText)}" id="test-${index}">
-    <button type="button" class="test-card__header" aria-expanded="false" data-toggle="test-body-${index}" title="${esc(test.fullTitle)}">
-      <span class="${statusBadgeClass(test.status)}">${statusIcon(test.status)} ${esc(test.status)}</span>
-      <span class="test-card__titles">
-        <span class="test-card__title">${esc(capitalize(test.title))}</span>
-        <span class="test-card__suite">${esc(test.suiteTitle)}</span>
+  <section class="usecase-section usecase-section--${accent}" id="${esc(sectionId)}">
+    <button type="button" class="usecase-section__header" aria-expanded="true" data-toggle="${esc(sectionId)}-body">
+      <span class="usecase-section__title">${esc(label)}</span>
+      <span class="usecase-section__badge-row">
+        ${tests.length ? `<span class="${statusBadgeClass(failed > 0 ? 'failed' : 'passed')}">${failed > 0 ? `${failed} failed` : 'all passed'}</span>` : '<span class="badge badge--skip">not run</span>'}
+        <span class="usecase-section__chevron">▾</span>
       </span>
-      <span class="test-card__meta">${formatDuration(test.durationMs)} · ${esc(test.browser)}${test.retries ? ` · retry ${test.retries}` : ''}</span>
-      <span class="test-card__chevron">▾</span>
     </button>
-    <div class="test-card__body" id="test-body-${index}" hidden>
-      <p class="test-card__description">${esc(test.description)}</p>
-      <div class="test-card__timerange">
-        <span>File: ${esc(test.fileName)}</span>
-        <span>Start: ${new Date(test.startTime).toLocaleString()}</span>
-        <span>End: ${new Date(test.endTime).toLocaleString()}</span>
-      </div>
-      ${renderFailurePanel(test)}
-      ${renderVideo(test)}
-      <details class="sub-section" open>
-        <summary>Execution Steps (${test.steps.length})</summary>
-        ${stepsHtml}
-      </details>
-      <details class="sub-section">
-        <summary>API Calls (${test.apiCalls.length})</summary>
-        ${renderApiTable(test.apiCalls)}
-      </details>
-      <details class="sub-section">
-        <summary>Logs</summary>
-        <div class="logs-grid">
-          ${renderLogsPanel('Console Logs', consoleAsItems(test.consoleLogs), 'No console output.')}
-          ${renderLogsPanel('Page Errors', pageErrorsAsItems(test.pageErrors), 'No page errors.')}
-          ${renderLogsPanel('Network Errors', networkErrorsAsItems(test.networkErrors), 'No network errors.')}
-          ${renderLogsPanel('Dialogs', dialogsAsItems(test.dialogs), 'No dialogs triggered.')}
-        </div>
-      </details>
+    <div class="usecase-section__body" id="${esc(sectionId)}-body">
+      ${body}
     </div>
-  </article>`;
+  </section>`;
 }
 
 // --- Top-level assembly --------------------------------------------------------
 
 export function generateHtmlReport(summary: ExecutionSummary, tests: TestReportEntry[]): string {
-  const testsHtml = tests.map((t, i) => renderTestCard(t, i)).join('\n');
+  const grouped = new Map<string, TestReportEntry[]>();
+  for (const t of tests) {
+    const id = t.useCase?.id ?? 'UNASSIGNED';
+    if (!grouped.has(id)) grouped.set(id, []);
+    grouped.get(id)!.push(t);
+  }
+
+  const sectionsHtml = USE_CASE_SECTIONS.map(({ id, label, accent }) =>
+    renderUseCaseSection(id, label, accent, grouped.get(id) ?? [])
+  ).join('\n');
+
+  const navLinks: Array<[string, string]> = USE_CASE_SECTIONS.map((s): [string, string] => [`#${s.id}`, s.label.split(':')[0]]);
+  const subNavHtml = navLinks.map(([href, text]) => `<a href="${href}" class="subnav__link">${esc(text)}</a>`).join('');
 
   return `<!doctype html>
-<html lang="en" data-theme="light">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Test Execution Report — ${esc(summary.executionDate)} ${esc(summary.executionTime)}</title>
+<title>Automation Anywhere Assignment Report — ${esc(summary.executionDate)} ${esc(summary.executionTime)}</title>
 <style>${REPORT_CSS}</style>
 </head>
 <body>
   <header class="topbar">
-    <div class="topbar__brand">Test Execution Report</div>
+    <div class="topbar__brand">Automation Anywhere Assignment Report</div>
     <div class="topbar__controls">
-      <input type="search" id="search-input" class="search-input" placeholder="Search tests..." />
       <div class="filter-group" id="filter-group">
         <button type="button" class="filter-btn is-active" data-filter="all">All</button>
         <button type="button" class="filter-btn" data-filter="passed">Passed</button>
         <button type="button" class="filter-btn" data-filter="failed">Failed</button>
-        <button type="button" class="filter-btn" data-filter="skipped">Skipped</button>
       </div>
-      <button type="button" id="theme-toggle" class="theme-toggle" aria-label="Toggle dark mode">🌙</button>
+      <button type="button" id="theme-toggle" class="theme-toggle" aria-label="Toggle dark mode">☀️</button>
     </div>
   </header>
 
+  <nav class="subnav">${subNavHtml}</nav>
+
   <main class="container">
     ${renderDashboard(summary)}
-    ${renderTimeline(tests)}
-    <section class="panel" id="tests">
-      <h2 class="panel__title">Test Details (<span id="visible-count">${tests.length}</span> of ${tests.length})</h2>
-      <div id="test-list">
-        ${testsHtml || '<p class="empty-note">No tests recorded.</p>'}
-      </div>
-    </section>
+    ${sectionsHtml}
   </main>
 
   <div id="screenshot-modal" class="modal" hidden>
@@ -391,12 +310,15 @@ const REPORT_CSS = `
   --skip: #9a7b1f;
   --warn: #c77d13;
   --shadow: 0 1px 3px rgba(20, 24, 33, 0.08), 0 1px 2px rgba(20, 24, 33, 0.06);
+  --uc1-accent: #3457d5;
+  --uc2-accent: #8a3fd1;
+  --other-accent: #5b6472;
   color-scheme: light;
 }
 html[data-theme="dark"] {
-  --bg: #12141c;
-  --surface: #1b1e29;
-  --surface-alt: #232734;
+  --bg: #0f1117;
+  --surface: #171a24;
+  --surface-alt: #1f232f;
   --border: #2d3242;
   --text: #e7e9ee;
   --text-muted: #9aa2b1;
@@ -406,6 +328,9 @@ html[data-theme="dark"] {
   --skip: #d4ab3a;
   --warn: #e39a3d;
   --shadow: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --uc1-accent: #7d95ff;
+  --uc2-accent: #c187f0;
+  --other-accent: #9aa2b1;
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
@@ -416,7 +341,7 @@ body {
   color: var(--text);
   line-height: 1.5;
 }
-.container { max-width: 1200px; margin: 0 auto; padding: 24px 20px 80px; }
+.container { max-width: 1200px; margin: 0 auto; padding: 20px 20px 60px; }
 
 .topbar {
   position: sticky; top: 0; z-index: 40;
@@ -425,12 +350,8 @@ body {
   background: var(--surface); border-bottom: 1px solid var(--border);
   box-shadow: var(--shadow);
 }
-.topbar__brand { font-weight: 700; font-size: 1.05rem; }
+.topbar__brand { font-weight: 800; font-size: 1.1rem; letter-spacing: -0.01em; }
 .topbar__controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.search-input {
-  padding: 7px 12px; border-radius: 8px; border: 1px solid var(--border);
-  background: var(--surface-alt); color: var(--text); min-width: 200px; font-size: 0.9rem;
-}
 .filter-group { display: flex; gap: 4px; background: var(--surface-alt); padding: 3px; border-radius: 8px; }
 .filter-btn {
   border: none; background: transparent; color: var(--text-muted);
@@ -441,8 +362,16 @@ body {
   border: 1px solid var(--border); background: var(--surface-alt); color: var(--text);
   width: 34px; height: 34px; border-radius: 8px; cursor: pointer; font-size: 1rem;
 }
+.subnav {
+  position: sticky; top: 57px; z-index: 39;
+  display: flex; gap: 4px; flex-wrap: wrap; padding: 8px 20px;
+  background: var(--surface-alt); border-bottom: 1px solid var(--border);
+  font-size: 0.82rem;
+}
+.subnav__link { color: var(--text-muted); text-decoration: none; padding: 4px 10px; border-radius: 6px; font-weight: 600; }
+.subnav__link:hover { background: var(--surface); color: var(--text); }
 
-.dashboard { margin-bottom: 28px; }
+.dashboard { margin-bottom: 20px; }
 .stat-grid {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 12px; margin-bottom: 14px;
@@ -455,33 +384,14 @@ body {
 .stat-card__value { font-size: 1.35rem; font-weight: 700; }
 
 .progress-bar {
-  position: relative; height: 28px; background: var(--surface-alt);
+  position: relative; height: 26px; background: var(--surface-alt);
   border-radius: 14px; overflow: hidden; border: 1px solid var(--border);
 }
 .progress-bar__fill { height: 100%; background: linear-gradient(90deg, var(--pass), #2fd48a); transition: width .3s ease; }
 .progress-bar__label {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-  font-size: 0.8rem; font-weight: 700; color: var(--text);
+  font-size: 0.78rem; font-weight: 700; color: var(--text);
 }
-
-.panel {
-  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
-  padding: 18px 20px; margin-bottom: 22px; box-shadow: var(--shadow);
-}
-.panel__title { margin: 0 0 14px; font-size: 1.05rem; }
-
-.timeline { list-style: none; margin: 0; padding: 0; max-height: 320px; overflow-y: auto; }
-.timeline__item {
-  display: grid; grid-template-columns: 70px 12px 1fr auto; align-items: center; gap: 10px;
-  padding: 6px 4px; border-bottom: 1px dashed var(--border); font-size: 0.85rem;
-}
-.timeline__time { color: var(--text-muted); font-variant-numeric: tabular-nums; }
-.timeline__dot { width: 9px; height: 9px; border-radius: 50%; background: var(--text-muted); justify-self: center; }
-.timeline__dot--passed { background: var(--pass); }
-.timeline__dot--failed { background: var(--fail); }
-.timeline__dot--skipped { background: var(--skip); }
-.timeline__dot--warning { background: var(--warn); }
-.timeline__test { color: var(--text-muted); font-size: 0.78rem; text-align: right; }
 
 .badge {
   display: inline-flex; align-items: center; gap: 4px; font-size: 0.72rem; font-weight: 700;
@@ -493,36 +403,69 @@ body {
 .badge--skip { background: color-mix(in srgb, var(--skip) 18%, transparent); color: var(--skip); }
 .badge--warn { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
 
-.test-card { border: 1px solid var(--border); border-radius: 10px; margin-bottom: 12px; overflow: hidden; }
-.test-card__header {
-  width: 100%; display: grid; grid-template-columns: auto 1fr auto auto;
-  align-items: center; gap: 12px; padding: 12px 16px; background: var(--surface-alt);
-  border: none; cursor: pointer; text-align: left; color: var(--text); font-size: 0.95rem;
+.usecase-section {
+  border-radius: 14px; margin-bottom: 22px; overflow: hidden;
+  border: 1px solid var(--border); box-shadow: var(--shadow);
+  border-left: 6px solid var(--other-accent);
 }
-.test-card__titles { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.test-card__title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.test-card__suite { font-size: 0.75rem; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.test-card__meta { color: var(--text-muted); font-size: 0.8rem; white-space: nowrap; }
-.test-card__chevron { transition: transform .15s ease; color: var(--text-muted); }
-.test-card__header[aria-expanded="true"] .test-card__chevron { transform: rotate(180deg); }
-.test-card__body { padding: 16px; border-top: 1px solid var(--border); }
-.test-card__description { margin: 0 0 12px; font-size: 0.9rem; color: var(--text); background: var(--surface-alt); border-left: 3px solid var(--accent); padding: 8px 12px; border-radius: 0 6px 6px 0; }
-.test-card__timerange { display: flex; gap: 20px; color: var(--text-muted); font-size: 0.8rem; margin-bottom: 12px; flex-wrap: wrap; }
+.usecase-section--uc1 { border-left-color: var(--uc1-accent); }
+.usecase-section--uc2 { border-left-color: var(--uc2-accent); }
+.usecase-section__header {
+  width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 16px 22px; background: var(--surface); border: none; cursor: pointer; text-align: left;
+}
+.usecase-section--uc1 .usecase-section__header { background: color-mix(in srgb, var(--uc1-accent) 12%, var(--surface)); }
+.usecase-section--uc2 .usecase-section__header { background: color-mix(in srgb, var(--uc2-accent) 12%, var(--surface)); }
+.usecase-section__title { font-size: 1.1rem; font-weight: 800; color: var(--text); }
+.usecase-section__badge-row { display: flex; align-items: center; gap: 10px; }
+.usecase-section__chevron { transition: transform .2s ease; color: var(--text-muted); }
+.usecase-section__header[aria-expanded="true"] .usecase-section__chevron { transform: rotate(180deg); }
+.usecase-section__body {
+  padding: 18px 22px; background: var(--surface);
+  max-height: 20000px; opacity: 1; overflow: hidden;
+  transition: max-height .35s ease, opacity .25s ease, padding .25s ease;
+}
+.usecase-section__body.is-collapsed { max-height: 0; opacity: 0; padding-top: 0; padding-bottom: 0; }
 
-.sub-section { border: 1px solid var(--border); border-radius: 8px; margin-bottom: 10px; padding: 10px 12px; background: var(--surface); }
-.sub-section summary { cursor: pointer; font-weight: 600; font-size: 0.9rem; }
-.sub-section[open] summary { margin-bottom: 10px; }
+.usecase-section__body > * + * { margin-top: 20px; }
+.usecase-section__body h3 { margin: 0 0 10px; font-size: 0.98rem; font-weight: 700; }
 
-.step-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-.step { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: var(--surface-alt); }
-.step--failed { border-color: var(--fail); }
-.step__header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 0.85rem; }
-.step__category { text-transform: uppercase; font-size: 0.68rem; letter-spacing: .05em; color: var(--text-muted); background: var(--surface); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; }
-.step__name { font-weight: 600; flex: 1; }
-.step__time, .step__duration { color: var(--text-muted); font-size: 0.78rem; font-variant-numeric: tabular-nums; }
-.step__locator { font-size: 0.78rem; color: var(--text-muted); margin-top: 4px; }
-.step__error { margin-top: 8px; padding: 8px 10px; background: color-mix(in srgb, var(--fail) 10%, transparent); border-radius: 6px; }
-.step__error-message { color: var(--fail); font-weight: 600; font-size: 0.85rem; }
+.video-block h3 { margin-bottom: 8px; }
+.video-player { width: 100%; max-height: 440px; border-radius: 10px; background: #000; }
+
+.key-shots__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+.key-shot-card {
+  border: 1px solid var(--border); background: var(--surface-alt); border-radius: 10px; padding: 6px;
+  cursor: zoom-in; display: flex; flex-direction: column; gap: 6px; text-align: left;
+  transition: transform .15s ease, box-shadow .15s ease;
+}
+.key-shot-card:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
+.key-shot-card img { width: 100%; aspect-ratio: 16/10; object-fit: cover; border-radius: 6px; display: block; }
+.key-shot-card__label { font-size: 0.78rem; font-weight: 600; padding: 0 2px 2px; }
+
+.api-summary__table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.api-summary__table th { text-align: left; padding: 8px; color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase; border-bottom: 1px solid var(--border); }
+.api-summary__row { cursor: pointer; }
+.api-summary__row td { padding: 10px 8px; border-bottom: 1px solid var(--border); }
+.api-summary__row:hover { background: var(--surface-alt); }
+.api-summary__expand-icon { color: var(--text-muted); transition: transform .2s ease; }
+.api-summary__row[aria-expanded="true"] .api-summary__expand-icon { transform: rotate(180deg); }
+.api-summary__detail-row td { padding: 0; border-bottom: 1px solid var(--border); }
+.api-summary__detail {
+  background: var(--surface-alt); padding: 14px 16px;
+  max-height: 0; overflow: hidden; opacity: 0;
+  transition: max-height .3s ease, opacity .2s ease, padding .2s ease;
+}
+.api-summary__detail-row.is-expanded .api-summary__detail { max-height: 2000px; opacity: 1; }
+.api-summary__assertions ul { margin: 6px 0 0; padding-left: 18px; }
+.api-summary__assertions li { font-size: 0.82rem; margin-bottom: 3px; }
+.api-summary__payloads { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+.api-summary__payloads pre { max-height: 220px; overflow: auto; white-space: pre-wrap; font-size: 0.72rem; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 8px; margin: 6px 0 0; }
+.method-tag { font-family: monospace; font-weight: 700; font-size: 0.75rem; }
+
+.failure-panel { border: 1px solid var(--fail); background: color-mix(in srgb, var(--fail) 8%, transparent); border-radius: 8px; padding: 12px 14px; }
+.failure-panel h4 { margin: 0 0 8px; color: var(--fail); }
+.failure-panel__message { font-weight: 600; margin-bottom: 6px; font-size: 0.88rem; }
 .step__stack { white-space: pre-wrap; font-size: 0.75rem; color: var(--text-muted); max-height: 200px; overflow: auto; margin: 6px 0 0; }
 .step__shots { display: flex; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
 
@@ -530,27 +473,7 @@ body {
 .thumb img { width: 140px; height: 88px; object-fit: cover; border-radius: 4px; display: block; }
 .thumb__caption { font-size: 0.7rem; color: var(--text-muted); }
 
-.failure-panel { border: 1px solid var(--fail); background: color-mix(in srgb, var(--fail) 8%, transparent); border-radius: 8px; padding: 12px 14px; margin-bottom: 14px; }
-.failure-panel h4 { margin: 0 0 8px; color: var(--fail); }
-.failure-panel__message { font-weight: 600; margin-bottom: 6px; }
-
-.video-block { margin-bottom: 14px; }
-.video-block h4 { margin: 0 0 8px; }
-.video-player { width: 100%; max-height: 480px; border-radius: 8px; background: #000; }
-
-.data-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
-.data-table th, .data-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
-.data-table th { color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase; }
-.api-url { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.api-row--failed { background: color-mix(in srgb, var(--fail) 8%, transparent); }
-.method-tag { font-family: monospace; font-weight: 700; font-size: 0.75rem; }
-.data-table pre { max-width: 400px; max-height: 200px; overflow: auto; white-space: pre-wrap; font-size: 0.72rem; }
-
-.logs-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
-.log-group h4 { margin: 0 0 6px; font-size: 0.82rem; }
-.log-line { font-size: 0.75rem; font-family: monospace; padding: 3px 0; border-bottom: 1px dotted var(--border); word-break: break-word; }
-.log-line__time { color: var(--text-muted); margin-right: 8px; }
-.empty-note { color: var(--text-muted); font-size: 0.82rem; font-style: italic; }
+.empty-note { color: var(--text-muted); font-size: 0.85rem; font-style: italic; margin: 0; }
 
 .modal {
   position: fixed; inset: 0; background: rgba(10, 12, 18, 0.92); z-index: 100;
@@ -566,7 +489,8 @@ body {
 
 @media (max-width: 720px) {
   .topbar { flex-direction: column; align-items: stretch; }
-  .test-card__header { grid-template-columns: 1fr; row-gap: 6px; }
+  .usecase-section__header { flex-direction: column; align-items: flex-start; }
+  .api-summary__payloads { grid-template-columns: 1fr; }
 }
 `;
 
@@ -582,8 +506,7 @@ const REPORT_JS = `
     html.setAttribute('data-theme', theme);
     themeToggle.textContent = theme === 'dark' ? '☀️' : '🌙';
   }
-  var savedTheme = localStorage.getItem(STORAGE_KEY)
-    || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  var savedTheme = localStorage.getItem(STORAGE_KEY) || 'dark';
   applyTheme(savedTheme);
   themeToggle.addEventListener('click', function () {
     var next = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
@@ -591,39 +514,41 @@ const REPORT_JS = `
     applyTheme(next);
   });
 
-  // Collapsible test cards.
+  // Collapsible use-case sections / expandable API rows (smooth max-height/opacity transition via CSS class).
   document.querySelectorAll('[data-toggle]').forEach(function (btn) {
     btn.addEventListener('click', function () {
       var targetId = btn.getAttribute('data-toggle');
       var body = document.getElementById(targetId);
+      if (!body) return;
       var expanded = btn.getAttribute('aria-expanded') === 'true';
       btn.setAttribute('aria-expanded', String(!expanded));
-      if (body) body.hidden = expanded;
+      if (body.classList.contains('api-summary__detail-row')) {
+        body.classList.toggle('is-expanded', !expanded);
+      } else {
+        body.classList.toggle('is-collapsed', expanded);
+      }
+    });
+    btn.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); btn.click(); }
     });
   });
 
-  // Search + status filter.
-  var searchInput = document.getElementById('search-input');
+  // Status filter — applies to API Validation Summary rows (Key Screenshots have no pass/fail status of their own).
   var filterGroup = document.getElementById('filter-group');
-  var visibleCount = document.getElementById('visible-count');
   var activeFilter = 'all';
 
   function applyFilters() {
-    var query = (searchInput.value || '').toLowerCase().trim();
-    var cards = document.querySelectorAll('.test-card');
-    var shown = 0;
-    cards.forEach(function (card) {
-      var matchesStatus = activeFilter === 'all' || card.getAttribute('data-status') === activeFilter
-        || (activeFilter === 'failed' && card.getAttribute('data-status') === 'timedOut');
-      var matchesSearch = !query || (card.getAttribute('data-title') || '').indexOf(query) !== -1;
-      var visible = matchesStatus && matchesSearch;
-      card.style.display = visible ? '' : 'none';
-      if (visible) shown += 1;
+    document.querySelectorAll('.api-summary__row').forEach(function (row) {
+      var visible = activeFilter === 'all'
+        || (activeFilter === 'passed' && row.querySelector('.badge--pass'))
+        || (activeFilter === 'failed' && row.querySelector('.badge--fail'));
+      row.style.display = visible ? '' : 'none';
+      var detailRow = document.getElementById(row.getAttribute('data-toggle'));
+      if (detailRow && !visible) detailRow.style.display = 'none';
+      else if (detailRow) detailRow.style.display = '';
     });
-    if (visibleCount) visibleCount.textContent = String(shown);
   }
 
-  searchInput.addEventListener('input', applyFilters);
   filterGroup.addEventListener('click', function (e) {
     var btn = e.target.closest('.filter-btn');
     if (!btn) return;
@@ -659,7 +584,7 @@ const REPORT_JS = `
     modalImage.src = '';
   }
 
-  document.querySelectorAll('.thumb').forEach(function (btn) {
+  document.querySelectorAll('.thumb, .key-shot-card').forEach(function (btn) {
     btn.addEventListener('click', function () {
       openModal(btn.getAttribute('data-full'), btn.getAttribute('data-caption'));
     });

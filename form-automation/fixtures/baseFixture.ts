@@ -5,7 +5,7 @@ import { AutomationPage } from '../pages/AutomationPage';
 import { FormDesignerPage } from '../pages/FormDesignerPage';
 import { RulesBuilderPage } from '../pages/RulesBuilderPage';
 import { TEXTBOXES } from '../utils/testData';
-import { StepRecorder } from '../reporting/StepRecorder';
+import { StepRecorder } from '../../reporting/StepRecorder';
 
 /**
  * Typed fixtures expose ready-to-use Page Objects to every test, so specs never

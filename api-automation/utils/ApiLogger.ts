@@ -41,7 +41,8 @@ function redactHeaders(headers: Record<string, string> | undefined): Record<stri
   return redacted;
 }
 
-function redactBody(body: unknown): unknown {
+/** Exported so other consumers (e.g. the HTML report's API Validation Summary) can redact bodies the same way console logging does — credentials must never reach either destination unmasked. */
+export function redactBody(body: unknown): unknown {
   if (body === null || body === undefined) return body;
   if (typeof body === 'string') {
     try {
