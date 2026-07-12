@@ -1,0 +1,13 @@
+node_modules/
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+.env
+*.log
+dist/
+# Saved by global-setup.ts; contains a live session token, not a secret to commit.
+.auth/
+# Self-contained HTML reports generated per execution by CustomHtmlReporter;
+# can embed large base64 video/screenshots, and a new file is written every run.
+reports/
