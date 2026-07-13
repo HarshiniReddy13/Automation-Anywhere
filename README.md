@@ -1,6 +1,6 @@
-# Automation Anywhere — Assignment Automation
+# Automation Anywhere — Technical Assignment 
 
-This repository contains Playwright + TypeScript automation for two assignment use cases: **Use Case 1 — Form with Rules Builder (UI Automation)** and **Use Case 2 — Learning Instance API Flow (API Automation)**. Both use cases run independently and share a single custom HTML report.
+This repository contains Playwright and TypeScript automation for two use cases: **Use Case 1 — Form with Rules Builder (UI Automation)** and **Use Case 2 — Learning Instance API Flow (API Automation)**. Both use cases run independently and share a single custom HTML report.
 
 For implementation details, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
