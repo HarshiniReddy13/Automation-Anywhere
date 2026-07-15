@@ -2,25 +2,9 @@ import { expect } from '@playwright/test';
 import type { ApiResponse } from '../api/ApiClient';
 import { ConfigManager } from '../utils/ConfigManager';
 
-/**
- * HTTP-level assertions: status code, status text, headers, content type,
- * response time. Every assertion carries a descriptive message (Use Case
- * 2's "Every assertion should include meaningful messages" requirement) and
- * is built on Playwright's own `expect`, so failures integrate cleanly with
- * `test.step()` reporting and the custom HTML reporter's failure capture.
- */
+
 export class ResponseValidator {
-  /**
-   * Validates the status equals exactly one expected value.
-   *
-   * NOTE: for `POST /cognitive/v3/learninginstances`, Use Case 2's spec
-   * assumes `201 Created`. Live testing against the real API (both via
-   * browser capture and a direct call) confirmed it actually returns `200
-   * OK` on success — there is no 201 anywhere in this API. Callers should
-   * pass the *actually observed* expected status (200), not assume REST
-   * convention; see `LearningInstanceApi.createInstance`'s call site for
-   * the documented reasoning.
-   */
+
   static validateStatus(response: ApiResponse, expectedStatus: number, context: string): void {
     expect(
       response.status,
@@ -45,7 +29,6 @@ export class ResponseValidator {
     ).toBe(expectedStatusText.toLowerCase());
   }
 
-  /** Validates response time is within the configured budget (default from ConfigManager, or an explicit override). */
   static validateResponseTime(response: ApiResponse, context: string, maxMs?: number): void {
     const budget = maxMs ?? ConfigManager.get().maxAcceptableResponseTimeMs;
     expect(
@@ -78,10 +61,6 @@ export class ResponseValidator {
     ).toBe(expectedValue);
   }
 
-  /**
-   * Convenience bundle covering the full "HTTP Validation" section of Use
-   * Case 2 in one call: status, response time, and content type.
-   */
   static validateSuccessfulJsonResponse(
     response: ApiResponse,
     expectedStatus: number,

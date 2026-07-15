@@ -7,10 +7,7 @@ import { RulesBuilderPage } from '../pages/RulesBuilderPage';
 import { TEXTBOXES } from '../utils/testData';
 import { StepRecorder } from '../../reporting/StepRecorder';
 
-/**
- * Typed fixtures expose ready-to-use Page Objects to every test, so specs never
- * instantiate pages manually. This keeps tests declarative and DRY.
- */
+
 export interface Pages {
   loginPage: LoginPage;
   homePage: HomePage;
@@ -19,19 +16,12 @@ export interface Pages {
   rulesBuilderPage: RulesBuilderPage;
 }
 
-/** A logged-in session fixture for tests that don't need to test login itself. */
 export interface AuthFixture {
   authenticatedHome: HomePage;
 }
 
 export interface ReportingFixtures {
-  /**
-   * Per-test step/log/screenshot recorder, wired into every Page Object
-   * below so their `*WithReport()` wrapper methods (see BasePage) work with
-   * zero reporting code in the test itself. Also auto-captures console
-   * logs, page errors, network failures, dialogs, and XHR/fetch calls for
-   * the whole test — none of that requires opting in either.
-   */
+
   recorder: StepRecorder;
 }
 
@@ -43,7 +33,6 @@ export const test = base.extend<Pages & AuthFixture & ReportingFixtures>({
       const version = page.context().browser()?.version();
       if (version) recorder.setBrowserVersion(version);
     } catch {
-      /* browser() can be unavailable for some launch modes — non-fatal */
     }
 
     page.on('console', (msg) => {
@@ -65,8 +54,6 @@ export const test = base.extend<Pages & AuthFixture & ReportingFixtures>({
       await dialog.dismiss().catch(() => undefined);
     });
 
-    // API request/response logging, scoped to XHR/fetch so static assets
-    // (scripts, styles, images) don't flood the report.
     const requestStartedAt = new Map<string, number>();
     page.on('request', (req) => {
       if (req.resourceType() === 'xhr' || req.resourceType() === 'fetch') {
@@ -86,7 +73,6 @@ export const test = base.extend<Pages & AuthFixture & ReportingFixtures>({
         try {
           requestBody = req.postData() ?? undefined;
         } catch {
-          /* body not always accessible (e.g. streamed) */
         }
         try {
           const contentType = resp.headers()['content-type'] ?? '';
@@ -94,7 +80,6 @@ export const test = base.extend<Pages & AuthFixture & ReportingFixtures>({
             responseBody = (await resp.text()).slice(0, 5000);
           }
         } catch {
-          /* response may already be consumed/closed */
         }
 
         recorder.logApiCall({
@@ -112,15 +97,11 @@ export const test = base.extend<Pages & AuthFixture & ReportingFixtures>({
 
     await use(recorder);
 
-    // A dedicated failure screenshot, on top of whatever the last recorded
-    // step's own after-screenshot captured, for tests that fail outside any
-    // *WithReport() step (e.g. a raw `expect()` in the test body).
     if (testInfo.status !== testInfo.expectedStatus) {
       try {
         const buffer = await page.screenshot({ type: 'png' });
         await testInfo.attach('shot__failure', { body: buffer, contentType: 'image/png' });
       } catch {
-        /* page may already be closed/crashed */
       }
     }
 
@@ -143,10 +124,6 @@ export const test = base.extend<Pages & AuthFixture & ReportingFixtures>({
     await use(new RulesBuilderPage(page, TEXTBOXES, recorder));
   },
 
-  /**
-   * Performs login once and yields a HomePage. Tests that only care about
-   * post-login flows can depend on this instead of repeating login steps.
-   */
   authenticatedHome: async ({ loginPage, homePage }, use) => {
     await loginPage.open();
     await loginPage.login();

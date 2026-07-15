@@ -1,21 +1,11 @@
-/**
- * Shared type definitions for the Learning Instance API automation module.
- *
- * All shapes here were captured from the *real* Automation Anywhere
- * Community Edition Document Automation (IQ Bot) API by driving the live
- * UI and inspecting network traffic — none of this was guessed. See the
- * "confirmed via live capture" comments in `endpoints.ts` and
- * `LearningInstanceApi.ts` for exactly how each field was verified.
- */
 
-// --- Authentication -----------------------------------------------------------
 
 export interface AuthCredentials {
   username: string;
   password: string;
 }
 
-/** Raw shape returned by `POST /v2/authentication`. */
+
 export interface RawAuthResponse {
   token: string;
   user: {
@@ -27,24 +17,14 @@ export interface RawAuthResponse {
   };
   permissions: Array<{ action: string; resourceType: string }>;
   tenantUuid: string;
-  /**
-   * Present in the payload but observed to always be `0` in practice —
-   * do NOT rely on this for expiry. The token's own JWT `exp` claim is the
-   * only reliable source (see AuthenticationApi.decodeTokenExpiry).
-   */
+
   ttlSeconds: number;
   changePasswordToken: string;
 }
 
-/** Normalized authentication result stored in the ExecutionContext. */
 export interface AuthResult {
   accessToken: string;
-  /**
-   * This API does not issue a refresh token (confirmed: `RawAuthResponse`
-   * has no such field). Kept as an explicit `undefined`-able property,
-   * rather than omitted, so callers can see this was a deliberate check,
-   * not an oversight — re-authentication is the only path when expired.
-   */
+
   refreshToken: string | undefined;
   issuedAt: Date;
   expiresAt: Date;
@@ -53,7 +33,6 @@ export interface AuthResult {
   username: string;
 }
 
-// --- Domains (Document Types) --------------------------------------------------
 
 export interface LanguageProvider {
   id: string;
@@ -67,7 +46,6 @@ export interface DomainLanguage {
   providers: LanguageProvider[];
 }
 
-/** Shape returned by `GET /cognitive/v3/domains` — one entry per document type. */
 export interface Domain {
   id: string;
   version: number;
@@ -77,7 +55,7 @@ export interface Domain {
   languageProviders: DomainLanguage[];
 }
 
-// --- Learning Instances ---------------------------------------------------------
+// Learning Instances 
 
 export type LearningInstanceStatus = 'PRIVATE' | 'PUBLISHED' | string;
 
@@ -97,7 +75,7 @@ export interface LearningInstanceField {
   [key: string]: unknown;
 }
 
-/** Body for `POST /cognitive/v3/learninginstances`. */
+
 export interface CreateLearningInstanceRequest {
   name: string;
   description: string;
@@ -115,7 +93,7 @@ export interface CreateLearningInstanceRequest {
   rules: unknown[];
 }
 
-/** Response shape for both create (`POST`) and get-by-id (`GET .../{id}`). */
+
 export interface LearningInstance {
   id: string;
   domainVersion: number;
@@ -138,7 +116,7 @@ export interface LearningInstance {
   [key: string]: unknown;
 }
 
-/** One row of `POST /cognitive/v3/learninginstances/list`'s `list` array — richer than the create/get response. */
+
 export interface LearningInstanceListItem {
   id: string;
   name: string;

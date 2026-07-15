@@ -1,10 +1,6 @@
 import type { AuthResult, LearningInstance } from '../api/types';
 
-/**
- * Plain-data snapshot of an ExecutionContext, suitable for JSON
- * serialization by CheckpointManager. Dates are stored as ISO strings on
- * disk and rehydrated to `Date` objects when loaded back in.
- */
+
 export interface ExecutionContextData {
   authToken?: string;
   refreshToken?: string;
@@ -18,17 +14,10 @@ export interface ExecutionContextData {
   learningInstanceStatus?: string;
   learningInstanceDomainName?: string;
   learningInstanceCreatedTimestamp?: string;
-  /** The exact request payload used to create the instance — needed to validate the response matches the request in Step 4. */
   learningInstanceRequestPayload?: unknown;
 }
 
-/**
- * Execution Context / runtime state carried between steps of a single test
- * run — this is the object Use Case 2 explicitly asks for instead of
- * relying on conversational memory. `CheckpointManager` persists snapshots
- * of this to disk so a later step (or a rerun) can resume from the last
- * good state instead of repeating completed API calls.
- */
+
 export class ExecutionContext {
   private auth?: AuthResult;
   private learningInstance?: {
@@ -40,7 +29,7 @@ export class ExecutionContext {
     requestPayload?: unknown;
   };
 
-  // --- Authentication -----------------------------------------------------------
+  // Authentication 
 
   setAuth(auth: AuthResult): void {
     this.auth = auth;
@@ -59,7 +48,7 @@ export class ExecutionContext {
     return this.auth.accessToken;
   }
 
-  // --- Learning Instance ----------------------------------------------------------
+  //  Learning Instance 
 
   setLearningInstance(instance: LearningInstance, requestPayload?: unknown): void {
     this.learningInstance = {
@@ -85,7 +74,7 @@ export class ExecutionContext {
     return this.learningInstance.id;
   }
 
-  // --- Serialization (for CheckpointManager) --------------------------------------
+  // Serialization 
 
   toJSON(): ExecutionContextData {
     return {
@@ -105,7 +94,6 @@ export class ExecutionContext {
     };
   }
 
-  /** Rehydrates from a previously-persisted snapshot (see CheckpointManager.loadCheckpoint). */
   static fromJSON(data: ExecutionContextData): ExecutionContext {
     const context = new ExecutionContext();
 

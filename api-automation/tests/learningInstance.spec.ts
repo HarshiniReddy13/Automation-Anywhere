@@ -15,31 +15,7 @@ import { DashboardPage } from '../pages/DashboardPage';
 import { LearningInstancesPage } from '../pages/LearningInstancesPage';
 import { StepRecorder } from '../../reporting/StepRecorder';
 
-/**
- * Use Case 2: Learning Instance API Automation, extended with a UI
- * Verification Layer.
- *
- * Completely independent of the Use Case 1 UI suite for business logic — no
- * imports from `form-automation/pages/`, `form-automation/fixtures/baseFixture.ts`,
- * or `form-automation/tests/rulesBuilder.spec.ts`. The UI Verification
- * Layer's own page objects live under `../pages/` (i.e. `api-automation/pages/`),
- * a separate folder from Use Case 1's `form-automation/pages/`, with no
- * shared code there — only the same live app and the same `.env`
- * credentials as data.
- *
- * The ONE deliberate shared dependency is `reporting/StepRecorder` — the
- * assignment's reporting requirements explicitly call for a single unified
- * HTML report spanning both use cases, which requires both to feed the same
- * reporting pipeline. This is shared *infrastructure* (step/log/screenshot
- * recording), not shared business logic — no page objects, API clients, or
- * assertions are reused from Use Case 1. See `CustomHtmlReporter.ts` for
- * how two independent `npx playwright test` runs still end up in one file.
- *
- * The Learning Instance itself is still created entirely via
- * `LearningInstanceApi` (Playwright's `request` fixture / `APIRequestContext`);
- * the browser (`page` fixture) is used strictly read-only, after creation,
- * to confirm the app's UI actually displays it — never to create one.
- */
+
 test.describe('Use Case 2: Learning Instance API Automation', () => {
   let context: ExecutionContext;
   let checkpointManager: CheckpointManager;
@@ -61,10 +37,7 @@ test.describe('Use Case 2: Learning Instance API Automation', () => {
     const fullyCompleted = completed.includes('VALIDATION_COMPLETED');
 
     if (!fullyCompleted) {
-      // A partial/failed run preserves its checkpoint (and any created
-      // instance) so the next run can resume instead of repeating
-      // already-completed steps — this IS the "Checkpoint Recovery"
-      // behavior, not a cleanup bug.
+
       ApiLogger.info(
         'Cleanup',
         `Run did not reach VALIDATION_COMPLETED (reached: [${completed.join(', ')}]) — ` +
@@ -98,25 +71,15 @@ test.describe('Use Case 2: Learning Instance API Automation', () => {
       const version = page.context().browser()?.version();
       if (version) recorder.setBrowserVersion(version);
     } catch {
-      /* browser() can be unavailable for some launch modes — non-fatal */
+
     }
 
-    /**
-     * Feeds every `ApiResponse` this test receives into the report's data.
-     * `operation`/`assertions` are only set for the handful of calls the
-     * assignment's "API Validation Summary" should actually show (see
-     * `ApiCallRecord.operation`'s doc comment) — internal/supporting calls
-     * (the domains lookup, the session-collision re-authentication) are
-     * still logged but omitted from that summary by leaving them unset.
-     */
+
     function logApiCall(response: ApiResponse<unknown>, operation?: string, assertions?: string[]): void {
       recorder.logApiCall({
         method: response.method,
         url: response.url,
-        // Redacted with the same helper ApiLogger's console output uses —
-        // the Authenticate call's request body is a real username/password;
-        // without this it would render in plaintext in the HTML report's
-        // expandable "API Validation Summary" row.
+
         requestBody: response.requestBody !== undefined ? JSON.stringify(redactBody(response.requestBody)) : undefined,
         responseBody: JSON.stringify(redactBody(response.body)),
         statusCode: response.status,
@@ -147,11 +110,7 @@ test.describe('Use Case 2: Learning Instance API Automation', () => {
           return;
         }
 
-        // Calls AuthenticationApi.authenticate() directly (not
-        // ensureAuthenticated()) so this test can capture the raw
-        // ApiResponse for the report's API table — the checkpoint guard
-        // above already replicates ensureAuthenticated()'s own
-        // reuse-unless-expired check, so nothing is duplicated.
+
         const { result: auth, response } = await authApi.authenticate({
           username: config.username,
           password: config.password,
@@ -175,11 +134,7 @@ test.describe('Use Case 2: Learning Instance API Automation', () => {
       });
 
       await test.step('Identify API Endpoints', async () => {
-        // Documents every endpoint this flow depends on, and functionally
-        // verifies the "Invoices" domain (Use Case 2's Document Type) still
-        // resolves to the constants LearningInstanceApi's create payload
-        // relies on — catches upstream domain-ID changes instead of a
-        // confusing failure two steps later.
+
         ApiLogger.info(
           'Identify API Endpoints',
           Object.entries(ApiEndpoints)
@@ -247,10 +202,7 @@ test.describe('Use Case 2: Learning Instance API Automation', () => {
           'Status is present',
         ]);
 
-        // Confirmed via live testing (browser capture AND a direct minimal-
-        // payload API call): this endpoint returns 200 OK on success, not
-        // the 201 Created the use case spec assumed. Asserting the real
-        // value here rather than the assumed one.
+
         ResponseValidator.validateStatus(response, 200, 'Create Learning Instance');
         ResponseValidator.validateResponseTime(response, 'Create Learning Instance');
         ResponseValidator.validateContentType(response, 'application/json', 'Create Learning Instance');
@@ -294,8 +246,7 @@ test.describe('Use Case 2: Learning Instance API Automation', () => {
           'Get Learning Instance Response'
         );
 
-        // Functional validation: the instance exists, and every field
-        // matches what was actually created/requested.
+
         expect(response.body.id.toLowerCase(), 'Retrieved instance ID should match the created instance').toBe(
           instanceId.toLowerCase()
         );
@@ -324,9 +275,6 @@ test.describe('Use Case 2: Learning Instance API Automation', () => {
         };
         page.on('console', diagnosisListener);
 
-        // Tracks whether the re-authentication below already ran, so the
-        // `finally` block only does it again as a fallback for failure
-        // paths that never reached it — see that block's comment.
         let reauthenticated = false;
 
         try {
@@ -396,11 +344,6 @@ test.describe('Use Case 2: Learning Instance API Automation', () => {
           });
           await recorder.captureNamedScreenshot('Validation Successful');
 
-          // Re-authenticate now (UI login above invalidated Step 1's token —
-          // see the `finally` block's comment for why) so the following
-          // 'Cleanup Completed' step can perform, and capture evidence of, a
-          // REAL delete call — rather than only relying on the afterAll
-          // safety net, which isn't visible to this test's own report data.
           const { result: freshAuth, response: reauthResponse } = await authApi.authenticate({
             username: config.username,
             password: config.password,
@@ -429,16 +372,7 @@ test.describe('Use Case 2: Learning Instance API Automation', () => {
           );
         } finally {
           page.off('console', diagnosisListener);
-          // The UI login invalidates whatever API token Step 1 obtained
-          // (confirmed via live testing: this account's JWT carries
-          // multipleLoginAllowed: false, so only the most recently issued
-          // token stays valid — a second login silently turns the earlier
-          // token into an HTTP 401 on its next use). If the try block above
-          // already re-authenticated (the success path), this is a no-op;
-          // otherwise (any failure before that point, including the
-          // row-not-found diagnosis throw) it's the fallback that
-          // guarantees the existing, UNCHANGED afterAll cleanup still has a
-          // valid token to delete the test instance with.
+
           if (!reauthenticated) {
             const { result: freshAuth, response: reauthResponse } = await authApi.authenticate({
               username: config.username,

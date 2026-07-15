@@ -2,16 +2,7 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-/**
- * Strongly-typed environment configuration.
- *
- * Values are resolved with the following precedence:
- *   1. Process environment variables (.env / CI secrets)
- *   2. Per-environment defaults defined below
- *
- * This keeps secrets out of source control while giving every environment a
- * sensible, self-documenting default.
- */
+
 
 export type EnvName = 'dev' | 'staging' | 'prod';
 
@@ -31,7 +22,6 @@ export interface EnvironmentConfig {
   readonly headless: boolean;
 }
 
-/** Read an env var, falling back to a default. Throws if required and missing. */
 function env(key: string, fallback?: string, required = false): string {
   const value = process.env[key] ?? fallback;
   if (required && (value === undefined || value === '')) {
@@ -61,10 +51,6 @@ const ENV_DEFAULTS: Record<EnvName, string> = {
 const activeEnv = (env('TEST_ENV', 'dev').toLowerCase() as EnvName) || 'dev';
 const isHeadless = bool('HEADLESS', true);
 
-/**
- * Resolved configuration for the currently selected environment.
- * Import this everywhere instead of touching process.env directly.
- */
 export const environment: EnvironmentConfig = {
   name: activeEnv,
   baseUrl: env('BASE_URL', ENV_DEFAULTS[activeEnv] ?? ENV_DEFAULTS.dev),

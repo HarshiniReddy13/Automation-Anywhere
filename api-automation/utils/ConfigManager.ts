@@ -2,15 +2,7 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-/**
- * Self-contained configuration for the API automation module.
- *
- * Deliberately does NOT import from `config/environment.ts` (the UI
- * framework's config) — Use Case 2 must remain independent of Use Case 1's
- * code. It reads the *same* `.env` file, since both use cases genuinely
- * target the same live Automation Anywhere account/instance, but that's a
- * shared data source, not a code dependency.
- */
+
 
 function readEnv(key: string, fallback?: string, required = false): string {
   const value = process.env[key] ?? fallback;
@@ -36,23 +28,12 @@ export interface ApiConfig {
   readonly baseUrl: string;
   readonly username: string;
   readonly password: string;
-  /** Timeout (ms) applied to every individual API call. */
   readonly requestTimeoutMs: number;
-  /** Max attempts (including the first) for retryable (transient) failures. */
   readonly maxRetryAttempts: number;
-  /** Base delay (ms) for exponential backoff between retries. */
   readonly retryBaseDelayMs: number;
-  /** Upper bound (ms) a single retry backoff will ever wait, regardless of attempt count. */
   readonly retryMaxDelayMs: number;
-  /** Response-time budget (ms) used by ResponseValidator's performance assertions. */
   readonly maxAcceptableResponseTimeMs: number;
-  /** Safety margin (seconds) subtracted from a token's real expiry before treating it as "expired". */
   readonly tokenExpiryBufferSeconds: number;
-  /**
-   * Whether the UI Verification Layer's browser runs headless. Reads the
-   * same `HEADLESS` env var Use Case 1 uses (as data only — this reader is
-   * independent, no code shared with `config/environment.ts`).
-   */
   readonly headless: boolean;
 }
 
@@ -78,5 +59,4 @@ class ConfigManagerImpl {
   }
 }
 
-/** Singleton — config is read once per process and reused. */
 export const ConfigManager = new ConfigManagerImpl();

@@ -13,12 +13,7 @@ import type {
   UseCaseInfo,
 } from './types';
 
-/**
- * Maps a spec file name to its assignment use case. Use Case 1 (UI) and Use
- * Case 2 (API) run under two entirely independent Playwright configs — see
- * `USE_CASES` below and `mergeWithPersistedSnapshots()` for how their
- * reports still end up combined into one HTML file despite that.
- */
+
 const USE_CASES: Record<Exclude<UseCaseId, 'UNASSIGNED'>, UseCaseInfo> = {
   UC1: { id: 'UC1', label: 'Use Case 1: Form with Rules Builder (UI Automation)' },
   UC2: { id: 'UC2', label: 'Use Case 2: Learning Instance API Flow (API Automation)' },
@@ -42,30 +37,6 @@ const EMPTY_META: ReportMeta = {
   namedScreenshots: [],
 };
 
-/**
- * Custom Playwright reporter producing a single self-contained HTML file per
- * execution under `reports/`. Never overwrites a previous run — each file
- * name carries the execution's start timestamp.
- *
- * Per-test detail (steps, screenshots, API calls, logs) arrives via
- * `testInfo.attach()` from `StepRecorder` (see StepRecorder.ts) — the only
- * channel that reliably survives from a test worker process back to this
- * reporter, including under parallel execution. Screenshots and the
- * built-in video recording are resolved to base64 here so the final HTML
- * has zero external file dependencies.
- *
- * Use Case 1 (`playwright.config.ts`) and Use Case 2
- * (`playwright.api.config.ts`) each run this same reporter class as part of
- * two separate `npx playwright test` invocations — there is no single
- * process that sees both suites' tests at once. To still produce one
- * combined "Automation Anywhere Assignment Report", `onEnd()` persists this
- * run's tests to `reports/.data/<useCaseId>.json` and merges in whatever
- * snapshot(s) exist for the *other* use case(s) before generating the HTML.
- * Re-running one suite always regenerates a report reflecting the latest
- * known state of both — a suite that hasn't run yet simply doesn't
- * contribute a section (no error), and a failure in one use case's tests
- * cannot affect how the other use case's already-persisted section renders.
- */
 export default class CustomHtmlReporter implements Reporter {
   private readonly tests: TestReportEntry[] = [];
   private startTimeMs = 0;
@@ -100,33 +71,16 @@ export default class CustomHtmlReporter implements Reporter {
     }));
 
     const project = test.parent.project();
-    // `||` (not `??`) deliberately: playwright.api.config.ts's implicit,
-    // unnamed default project has `project.name === ''` — an empty string
-    // is falsy but not nullish, so `??` would silently accept it and the
-    // report's "Browser" stat would render blank instead of falling
-    // through to a real value.
+
     const browser = project?.use?.browserName || project?.name || 'chromium';
 
-    // titlePath is [project, file, ...describe blocks, test title] — but
-    // `.filter(Boolean)` silently drops an empty *project name* (e.g.
-    // playwright.api.config.ts's implicit, unnamed default project), which
-    // shifts every subsequent index down by one and makes titlePath[1]
-    // resolve to a describe-block title instead of the file name. Confirmed
-    // live: this caused Use Case 2's tests to be tagged "UNASSIGNED" instead
-    // of "UC2". `test.location.file` is Playwright's own reliable source
-    // for the spec file path regardless of project naming — use that
-    // instead of parsing titlePath.
+
     const fileName = path.basename(test.location.file);
-    // `test.parent` is the immediate enclosing `describe()` block's Suite —
-    // reading `.title` directly off it sidesteps the same titlePath
-    // index-shifting problem fileName just worked around, since every spec
-    // in this project uses a single-level describe() (not nested ones).
+
     const suiteTitle = test.parent.title || fileName;
     const titlePath = test.titlePath().filter(Boolean);
 
-    // Playwright's own mechanism for a human-readable test summary:
-    // test('name', { annotation: { type: 'description', description: '...' } }, ...).
-    // Falls back to the raw test title when a test hasn't declared one.
+
     const description =
       test.annotations.find((a) => a.type === 'description')?.description ?? test.title;
 
@@ -163,9 +117,6 @@ export default class CustomHtmlReporter implements Reporter {
     const endTimeMs = Date.now();
     const thisRunSummary = this.buildSummary(endTimeMs);
 
-    // Figure out which use case(s) this run actually covers (normally
-    // exactly one — Use Case 1 and Use Case 2 run under separate configs —
-    // but this stays correct even if a future run mixes spec files).
     const useCaseIdsInThisRun = new Set(this.tests.map((t) => t.useCase?.id ?? 'UNASSIGNED'));
     for (const id of useCaseIdsInThisRun) {
       this.persistSnapshot(id as UseCaseId, thisRunSummary, endTimeMs);
@@ -180,13 +131,11 @@ export default class CustomHtmlReporter implements Reporter {
     const filePath = path.join(reportsDir, `TestExecution_${formatTimestampForFilename(new Date(this.startTimeMs))}.html`);
     fs.writeFileSync(filePath, html, 'utf-8');
 
-    // eslint-disable-next-line no-console
+
     console.log(`\n📄 HTML report written to ${filePath}\n`);
   }
 
-  // --- Cross-run persistence & merge ---------------------------------------
 
-  /** Writes this run's tests (for one use case) to disk so a later, separate run of the other use case can merge them in. */
   private persistSnapshot(useCaseId: UseCaseId, summary: ExecutionSummary, generatedAt: number): void {
     const testsForThisUseCase = this.tests.filter((t) => (t.useCase?.id ?? 'UNASSIGNED') === useCaseId);
     if (testsForThisUseCase.length === 0) return;
@@ -202,21 +151,12 @@ export default class CustomHtmlReporter implements Reporter {
       fs.mkdirSync(SNAPSHOT_DIR, { recursive: true });
       fs.writeFileSync(path.join(SNAPSHOT_DIR, `${useCaseId}.json`), JSON.stringify(snapshot), 'utf-8');
     } catch (error) {
-      // Non-fatal: worst case, the next combined report just won't include
-      // this run's data for the other use case to pick up.
-      // eslint-disable-next-line no-console
+
       console.warn(`Could not persist report snapshot for ${useCaseId}: ${(error as Error).message}`);
     }
   }
 
-  /**
-   * Reads every persisted snapshot under `reports/.data/`, keeps this run's
-   * own fresh in-memory data for whichever use case(s) it just produced,
-   * and fills in any OTHER use case(s) from their most recently persisted
-   * snapshot. A snapshot that fails to parse (corrupt/partial write) is
-   * skipped rather than thrown — one broken file must not prevent the
-   * current run's own section from rendering.
-   */
+
   private mergeWithPersistedSnapshots(useCaseIdsInThisRun: Set<string>): { mergedTests: TestReportEntry[] } {
     const merged: TestReportEntry[] = [...this.tests];
 
@@ -254,7 +194,6 @@ export default class CustomHtmlReporter implements Reporter {
     }
     try {
       const parsed = JSON.parse(attachment.body.toString('utf-8')) as ReportMeta;
-      // Backward-compat: older persisted meta blobs predate namedScreenshots.
       return { ...parsed, namedScreenshots: parsed.namedScreenshots ?? [] };
     } catch {
       return EMPTY_META;
@@ -277,8 +216,7 @@ export default class CustomHtmlReporter implements Reporter {
         screenshotMap.set(attachment.name, attachment.body.toString('base64'));
         continue;
       }
-      // Playwright's own built-in failure screenshot (from `use.screenshot`),
-      // kept as a fallback if StepRecorder didn't capture one of its own.
+
       if (attachment.name === 'screenshot') {
         if (attachment.body) {
           builtInFailureScreenshotBase64 = attachment.body.toString('base64');
@@ -296,20 +234,12 @@ export default class CustomHtmlReporter implements Reporter {
     return { screenshotMap, videoBase64, videoMimeType, builtInFailureScreenshotBase64 };
   }
 
-  // --- Summary -------------------------------------------------------------
 
-  /** Stats for THIS run only (its own use case's tests) — what gets persisted to disk. */
   private buildSummary(endTimeMs: number): ExecutionSummary {
     return this.summarize(this.tests, endTimeMs);
   }
 
-  /**
-   * Stats for the FULL merged set (this run's use case + whatever other
-   * use case snapshot(s) were found on disk) — what the generated HTML
-   * actually shows. Wall-clock fields (date/time/duration/browser) stay
-   * this run's own, since two independent process runs don't share a
-   * meaningful combined duration; only the test counts are unioned.
-   */
+
   private buildCombinedSummary(mergedTests: TestReportEntry[], thisRunSummary: ExecutionSummary): ExecutionSummary {
     const combined = this.summarize(mergedTests, this.startTimeMs + thisRunSummary.totalDurationMs);
     return { ...combined, totalDurationMs: thisRunSummary.totalDurationMs };

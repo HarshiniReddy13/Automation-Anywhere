@@ -3,13 +3,11 @@ import { ApiLogger } from '../utils/ApiLogger';
 import { RetryHelper, type RetryOptions } from '../utils/RetryHelper';
 import { ConfigManager } from '../utils/ConfigManager';
 
-/** Normalized response shape every ApiClient call resolves to — HTTP status, headers, body, and timing. */
 export interface ApiResponse<T = unknown> {
   status: number;
   statusText: string;
   headers: Record<string, string>;
   body: T;
-  /** Raw response text, kept alongside the parsed body in case a caller needs it (e.g. non-JSON responses). */
   rawText: string;
   responseTimeMs: number;
   url: string;
@@ -20,24 +18,13 @@ export interface ApiResponse<T = unknown> {
 
 export interface ApiRequestOptions {
   headers?: Record<string, string>;
-  /** Sent as a JSON body (auto-stringified) — mutually exclusive with `data` if you need a non-JSON payload. */
   json?: unknown;
-  /** Step name for logging; defaults to `"{METHOD} {path}"` when omitted. */
   stepName?: string;
-  /** Per-call retry override; defaults to ConfigManager's settings. */
   retry?: Partial<RetryOptions>;
-  /** Skip retry entirely for this call (e.g. deliberately-invalid requests in negative tests). */
   disableRetry?: boolean;
 }
 
-/**
- * Thin, typed wrapper around Playwright's `APIRequestContext`.
- *
- * Every call automatically: logs full request/response detail via
- * `ApiLogger`, retries transient failures via `RetryHelper`, measures
- * response time, and normalizes the result into `ApiResponse<T>` so
- * validators/tests never touch Playwright's raw `APIResponse` directly.
- */
+
 export class ApiClient {
   constructor(
     private readonly request: APIRequestContext,
@@ -94,7 +81,6 @@ export class ApiClient {
           requestBody: options.json,
           error: { message: error instanceof Error ? error.message : String(error) },
         });
-        // No status code available — RetryHelper's default classification treats this as transient.
         throw error;
       }
 
@@ -139,11 +125,7 @@ export class ApiClient {
       });
 
       if (!response.ok()) {
-        // Thrown so RetryHelper can classify it by status code; ApiClient
-        // callers that want the raw ApiResponse on failure should catch
-        // this and read `.response` off it (see LearningInstanceApi for
-        // the pattern) rather than relying on a thrown response reaching
-        // the test directly.
+
         const httpError = new HttpError(normalized);
         throw httpError;
       }
@@ -170,7 +152,6 @@ export class ApiClient {
   }
 }
 
-/** Thrown when a response has a non-2xx/3xx status; carries the full normalized ApiResponse for callers/validators. */
 export class HttpError extends Error {
   constructor(public readonly response: ApiResponse) {
     super(`HTTP ${response.status} ${response.statusText} for ${response.method} ${response.url}`);

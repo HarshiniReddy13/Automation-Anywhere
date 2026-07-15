@@ -7,15 +7,8 @@ import {
   generateFormName,
 } from '../utils/testData';
 
-/**
- * End-to-end Rules Builder workflow.
- *
- * The spec is intentionally thin: it describes the WORKFLOW while all business
- * logic and assertions live inside the Page Objects. Each phase is wrapped in a
- * `test.step()` for rich, readable reporting.
- */
+
 test.describe('Automation Anywhere — Form & Rules Builder E2E', () => {
-  // Unique per run so parallel/repeat executions never collide.
   const formName = generateFormName();
 
   test(
@@ -31,11 +24,9 @@ test.describe('Automation Anywhere — Form & Rules Builder E2E', () => {
       },
     },
     async ({ loginPage, homePage, automationPage, formDesignerPage, rulesBuilderPage, recorder }) => {
-    // 1) Login ---------------------------------------------------------------
     await test.step('Login and land on the dashboard', async () => {
       await loginPage.open();
-      // Assert the login form only when it is actually shown (an existing SSO
-      // session may bypass it entirely).
+
       if (await loginPage.isLoginFormPresent()) {
         await loginPage.assertLoaded();
       }
@@ -44,7 +35,6 @@ test.describe('Automation Anywhere — Form & Rules Builder E2E', () => {
       await recorder.captureNamedScreenshot('Login Successful');
     });
 
-    // 2) Navigate to Automation & create a Form ------------------------------
     await test.step('Open Automation and create a new Form', async () => {
       await homePage.goToAutomation();
       await automationPage.assertLoaded();
@@ -54,14 +44,14 @@ test.describe('Automation Anywhere — Form & Rules Builder E2E', () => {
       await recorder.captureNamedScreenshot('Form Created');
     });
 
-    // 3) Drag two Textboxes onto the canvas ----------------------------------
+    // Drag two Textboxes onto the canvas 
     await test.step('Drag two Textbox components onto the canvas', async () => {
       await formDesignerPage.addTextboxes(2);
       expect(await formDesignerPage.componentCount()).toBeGreaterThanOrEqual(2);
       await recorder.captureNamedScreenshot('Textboxes Added to Canvas');
     });
 
-    // 4) Configure both textboxes --------------------------------------------
+    // Configure both textboxes 
     await test.step('Configure textbox properties', async () => {
       for (let i = 0; i < TEXTBOXES.length; i++) {
         await formDesignerPage.configureTextbox(i, TEXTBOXES[i]);
@@ -70,21 +60,21 @@ test.describe('Automation Anywhere — Form & Rules Builder E2E', () => {
       await recorder.captureNamedScreenshot('Textbox Properties Configured');
     });
 
-    // 5) Save the form -------------------------------------------------------
+    // Save the form 
     await test.step('Save the form and confirm success', async () => {
       await formDesignerPage.assertSaveEnabled();
       const formId = await formDesignerPage.saveForm();
       expect(formId, 'Form ID returned by API').toBeTruthy();
     });
 
-    // 6) Open the Rules tab --------------------------------------------------
+    // Open the Rules tab 
     await test.step('Navigate to the Rules tab', async () => {
       await formDesignerPage.goToRulesTab();
       await rulesBuilderPage.assertLoaded();
       await recorder.captureNamedScreenshot('Rule Builder Opened');
     });
 
-    // 7) Rule1 with two conditions (AND) and an action -----------------------
+    // Rule1 with two conditions (AND) and an action 
     await test.step('Create Rule1 with conditions and an action', async () => {
       const rule1 = RULES[0];
       await rulesBuilderPage.addRule();
@@ -123,7 +113,7 @@ test.describe('Automation Anywhere — Form & Rules Builder E2E', () => {
       await recorder.captureNamedScreenshot('Action Added to Rule1');
     });
 
-    // 8) Rule2 via context menu "Add Rule Below" -----------------------------
+    //  Rule2 via context menu 
     await test.step('Create Rule2 below Rule1 via the context menu', async () => {
       const rule2 = RULES[1];
       await rulesBuilderPage.addRuleBelow('Rule1');
@@ -133,7 +123,7 @@ test.describe('Automation Anywhere — Form & Rules Builder E2E', () => {
       await recorder.captureNamedScreenshot('Rule2 Added via Context Menu');
     });
 
-    // 9) Rule3 via context menu "Add Rule Below" -----------------------------
+    //  Rule3 via context menu 
     await test.step('Create Rule3 below Rule2 via the context menu', async () => {
       const rule3 = RULES[2];
       await rulesBuilderPage.addRuleBelow('Rule2');
@@ -143,13 +133,13 @@ test.describe('Automation Anywhere — Form & Rules Builder E2E', () => {
       await recorder.captureNamedScreenshot('Rule3 Added via Context Menu');
     });
 
-    // 10) Save rules ---------------------------------------------------------
+    // Save rules 
     await test.step('Save the form with all rules', async () => {
       await rulesBuilderPage.saveRules();
       await recorder.captureNamedScreenshot('Rules Saved Successfully');
     });
 
-    // 11) Verify persistence & ordering --------------------------------------
+    // Verify persistence & ordering 
     await test.step('Verify all rules persist in the correct order', async () => {
       await rulesBuilderPage.assertRulesPersisted(EXPECTED_RULE_ORDER);
       await recorder.captureNamedScreenshot('All Rules Persisted (Final Validation)');
@@ -157,10 +147,7 @@ test.describe('Automation Anywhere — Form & Rules Builder E2E', () => {
   });
 });
 
-/**
- * Focused condition-type behavior test: confirms the value field visibility
- * rule (visible for Contains, hidden for Is Not Empty).
- */
+
 test.describe('Condition value-field visibility', () => {
   test(
     'value field appears only for value-based conditions',
@@ -174,7 +161,7 @@ test.describe('Condition value-field visibility', () => {
       },
     },
     async ({ authenticatedHome, homePage, automationPage, formDesignerPage, rulesBuilderPage }) => {
-    void authenticatedHome; // login handled by the fixture
+    void authenticatedHome; 
     const formName = generateFormName();
 
     await homePage.goToAutomation();
@@ -182,10 +169,7 @@ test.describe('Condition value-field visibility', () => {
     await automationPage.createForm(formName);
     await formDesignerPage.assertDesignerOpen();
     await formDesignerPage.addTextboxes(2);
-    // addCondition() below looks up option text by TEXTBOXES[*].label
-    // ("First Name"/"Last Name") via elementRef, so the textboxes need
-    // those labels configured — otherwise the dropdown shows this app's
-    // auto-generated default labels instead, and the option is never found.
+
     await formDesignerPage.configureTextbox(0, TEXTBOXES[0]);
     await formDesignerPage.configureTextbox(1, TEXTBOXES[1]);
     await formDesignerPage.goToRulesTab();
@@ -194,7 +178,6 @@ test.describe('Condition value-field visibility', () => {
     await rulesBuilderPage.addRule();
     await rulesBuilderPage.nameRule(0, 'VisibilityRule');
 
-    // Is Not Empty -> value field hidden (asserted inside addCondition).
     await rulesBuilderPage.addCondition(
       'VisibilityRule',
       { elementRef: 'textbox1', conditionType: ConditionType.IsNotEmpty },
@@ -202,7 +185,6 @@ test.describe('Condition value-field visibility', () => {
       LogicalOperator.And
     );
 
-    // Contains -> value field visible (asserted inside addCondition).
     await rulesBuilderPage.addCondition(
       'VisibilityRule',
       { elementRef: 'textbox1', conditionType: ConditionType.Contains, value: 'abc' },

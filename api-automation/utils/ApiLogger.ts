@@ -1,13 +1,4 @@
-/**
- * Structured logger for every API call the framework makes.
- *
- * Produces one entry per call with everything Use Case 2's "Logging"
- * section asks for (step name, timing, method, URL, headers, bodies,
- * status, response time), tagged PASS / FAIL / WARNING / INFO. Sensitive
- * headers/fields (tokens, passwords) are redacted before anything is
- * printed or stored — logs are diagnostic output, not a place to leak
- * credentials.
- */
+
 
 export type LogLevel = 'PASS' | 'FAIL' | 'WARNING' | 'INFO';
 
@@ -41,7 +32,7 @@ function redactHeaders(headers: Record<string, string> | undefined): Record<stri
   return redacted;
 }
 
-/** Exported so other consumers (e.g. the HTML report's API Validation Summary) can redact bodies the same way console logging does — credentials must never reach either destination unmasked. */
+
 export function redactBody(body: unknown): unknown {
   if (body === null || body === undefined) return body;
   if (typeof body === 'string') {
@@ -78,7 +69,6 @@ const LEVEL_PREFIX: Record<LogLevel, string> = {
 class ApiLoggerImpl {
   private readonly entries: ApiCallLogEntry[] = [];
 
-  /** Records and prints one API call's full detail. */
   log(entry: Omit<ApiCallLogEntry, 'requestHeaders' | 'responseHeaders' | 'requestBody' | 'responseBody'> & {
     requestHeaders?: Record<string, string>;
     responseHeaders?: Record<string, string>;
@@ -96,7 +86,6 @@ class ApiLoggerImpl {
     this.print(redacted);
   }
 
-  /** A lightweight, non-HTTP informational or warning message (e.g. "reusing cached token"). */
   info(stepName: string, message: string): void {
     this.print(this.simpleEntry(stepName, 'INFO', message));
   }
@@ -142,11 +131,9 @@ class ApiLoggerImpl {
       lines.push(`  error: ${entry.error.message}`);
       if (entry.error.stack) lines.push(`  stack: ${entry.error.stack}`);
     }
-    // eslint-disable-next-line no-console
     console.log(lines.join('\n'));
   }
 
-  /** All entries recorded so far this process — useful for attaching to a test report. */
   getEntries(): readonly ApiCallLogEntry[] {
     return this.entries;
   }
@@ -160,5 +147,4 @@ function truncate(text: string, max = 2000): string {
   return text.length > max ? `${text.slice(0, max)}... (truncated, ${text.length} chars total)` : text;
 }
 
-/** Singleton — one shared log stream for the whole test run, matching how a real CI log reads top-to-bottom. */
 export const ApiLogger = new ApiLoggerImpl();

@@ -17,17 +17,6 @@ function nextId(prefix: string): string {
   return `${prefix}_${Date.now()}_${sequence}`;
 }
 
-/**
- * Per-test recorder used by BasePage's `*WithReport()` wrapper methods and
- * the reporting fixture. Accumulates step/log/API data in memory for the
- * duration of one test, then hands it to Playwright via `testInfo.attach()`
- * — attachments are the only channel that reliably survives from a test
- * worker process to the reporter (see CustomHtmlReporter.onTestEnd).
- *
- * Screenshots are attached individually and immediately (as binary PNGs)
- * rather than embedded in the JSON meta blob, keeping that blob small; each
- * step only carries a reference (attachment name) to its screenshot(s).
- */
 export class StepRecorder {
   private readonly meta: ReportMeta = {
     steps: [],
@@ -63,25 +52,14 @@ export class StepRecorder {
     }
   }
 
-  /**
-   * Explicit, one-off milestone screenshot outside the before/after step
-   * lifecycle — e.g. "Login Successful", "Form Created". Recorded into
-   * `meta.namedScreenshots` (unlike `captureScreenshot()`'s internal use for
-   * step before/after pairs) so `CustomHtmlReporter` can surface it in the
-   * report's curated "Key Screenshots" gallery.
-   */
+
   async captureNamedScreenshot(label: string): Promise<{ attachmentName: string; label: string } | undefined> {
     const ref = await this.captureScreenshot(label);
     if (ref) this.meta.namedScreenshots.push(ref);
     return ref;
   }
 
-  /**
-   * Runs `action`, recording it as one report step with before/after
-   * screenshots and timing. Re-throws whatever `action` throws after
-   * recording the failure, so callers keep normal Playwright error
-   * propagation/assertions.
-   */
+
   async runStep<T>(
     name: string,
     category: StepCategory,
@@ -141,7 +119,6 @@ export class StepRecorder {
     this.meta.dialogs.push(rec);
   }
 
-  /** Attaches the accumulated JSON meta blob. Must be called once, at the end of the test. */
   async finalize(): Promise<void> {
     if (this.finalized) return;
     this.finalized = true;

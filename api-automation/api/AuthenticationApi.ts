@@ -6,17 +6,7 @@ import { ConfigManager } from '../utils/ConfigManager';
 import type { AuthCredentials, AuthResult, RawAuthResponse } from './types';
 import type { ExecutionContext } from '../context/ExecutionContext';
 
-/**
- * Authentication API — Step 1 of Use Case 2.
- *
- * Confirmed via live testing against the real instance: `POST
- * /v2/authentication` accepts plain-JSON credentials directly (see
- * `ApiEndpoints.AUTHENTICATE`'s comment for how this was verified against
- * the browser's more elaborate encrypted login flow), and issues a JWT with
- * no refresh token. Token lifetime is embedded in the JWT's own `exp`
- * claim — the response's `ttlSeconds` field exists but was observed to
- * always read `0`, so it is never used for expiry math here.
- */
+
 export class AuthenticationApi {
   private readonly client: ApiClient;
 
@@ -24,11 +14,6 @@ export class AuthenticationApi {
     this.client = new ApiClient(request);
   }
 
-  /**
-   * Authenticates and returns a normalized `AuthResult`. Validates status,
-   * response time, and token presence/non-emptiness per Use Case 2's Step 1
-   * requirements — callers get a fully-checked result, not just raw JSON.
-   */
   async authenticate(credentials: AuthCredentials): Promise<{ result: AuthResult; response: ApiResponse<RawAuthResponse> }> {
     const config = ConfigManager.get();
     const response = await this.client.post<RawAuthResponse>(ApiEndpoints.AUTHENTICATE.path, {
@@ -59,7 +44,7 @@ export class AuthenticationApi {
 
     const result: AuthResult = {
       accessToken: response.body.token,
-      refreshToken: undefined, // confirmed: this API does not issue one
+      refreshToken: undefined, 
       issuedAt,
       expiresAt,
       tenantUuid: response.body.tenantUuid,
@@ -75,11 +60,6 @@ export class AuthenticationApi {
     return { result, response };
   }
 
-  /**
-   * Reuses the ExecutionContext's existing token unless it is missing or
-   * expired (within `tokenExpiryBufferSeconds` of expiry) — Use Case 2's
-   * "reuse the existing token instead of authenticating again" requirement.
-   */
   async ensureAuthenticated(context: ExecutionContext, credentials: AuthCredentials): Promise<AuthResult> {
     const existing = context.getAuth();
     if (existing && !this.isExpired(existing)) {
@@ -101,11 +81,7 @@ export class AuthenticationApi {
     return Date.now() >= auth.expiresAt.getTime() - bufferMs;
   }
 
-  /**
-   * Decodes a JWT's payload (base64url, no signature verification — this
-   * client trusts a token it just received directly from the server over
-   * TLS) to read `iat`/`exp`, both in epoch seconds.
-   */
+
   private decodeTokenTimestamps(token: string): { issuedAt: Date; expiresAt: Date } {
     const parts = token.split('.');
     if (parts.length !== 3) {

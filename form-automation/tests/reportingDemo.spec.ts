@@ -1,12 +1,6 @@
 import { test } from '../fixtures/baseFixture';
 
-/**
- * Demonstrates the custom HTML reporting system end-to-end: step-level
- * detail (before/after screenshots, timing, status) comes entirely from
- * `*WithReport()` wrapper methods on the Page Objects — this spec contains
- * no reporting code of its own. Run it and open the generated file under
- * `reports/` to see the result.
- */
+
 test.describe('Reporting System Demo', () => {
   test(
     'records step-level detail via BasePage wrapper methods',
@@ -20,9 +14,6 @@ test.describe('Reporting System Demo', () => {
       },
     },
     async ({ loginPage, homePage, automationPage }) => {
-    // storageState carries the authenticated session, but Playwright still
-    // starts on about:blank — open() navigates in, and since we're already
-    // authenticated the app redirects straight past the login form.
     await loginPage.open();
     await homePage.assertLoaded();
     await homePage.goToAutomationWithReport();

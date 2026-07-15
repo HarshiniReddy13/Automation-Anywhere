@@ -1,6 +1,5 @@
 import type { ApiCallRecord, ExecutionSummary, TestReportEntry, UseCaseId } from './types';
 
-/** Escapes text for safe interpolation into HTML (log/error content is arbitrary user/app text). */
 function esc(value: unknown): string {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -10,17 +9,11 @@ function esc(value: unknown): string {
     .replace(/'/g, '&#39;');
 }
 
-/**
- * Strips ANSI color escape codes. Playwright's own error messages/stacks
- * are formatted for a terminal (color codes for "expect", "locator", etc.)
- * — rendered as-is in HTML they show up as literal garbage like `[2m[22m`.
- */
 function stripAnsi(value: string): string {
   // eslint-disable-next-line no-control-regex
   return value.replace(/\x1b\[[0-9;]*m/g, '');
 }
 
-/** Escapes error/stack text after stripping ANSI codes — use for anything sourced from a TestError. */
 function escError(value: unknown): string {
   return esc(stripAnsi(String(value ?? '')));
 }
@@ -42,7 +35,6 @@ function statusBadgeClass(status: string): string {
   }
 }
 
-// --- Execution Summary -------------------------------------------------------
 
 function renderDashboard(summary: ExecutionSummary): string {
   const cards: Array<[string, string]> = [
@@ -75,7 +67,6 @@ function renderDashboard(summary: ExecutionSummary): string {
   </section>`;
 }
 
-// --- Key Screenshots -----------------------------------------------------------
 
 function renderKeyScreenshots(tests: TestReportEntry[]): string {
   const shots = tests.flatMap((t) => t.namedScreenshots).filter((s): s is { label: string; base64: string } => !!s.base64);
@@ -106,7 +97,6 @@ function renderKeyScreenshots(tests: TestReportEntry[]): string {
   </div>`;
 }
 
-// --- API Validation Summary (Use Case 2 only) -----------------------------------
 
 function renderApiValidationSummary(apiCalls: ApiCallRecord[], sectionId: string): string {
   const keyCalls = apiCalls.filter((c) => c.operation);
@@ -158,7 +148,6 @@ function renderApiValidationSummary(apiCalls: ApiCallRecord[], sectionId: string
   </div>`;
 }
 
-// --- Use case sections -----------------------------------------------------
 
 const USE_CASE_SECTIONS: Array<{ id: Exclude<UseCaseId, 'UNASSIGNED'>; label: string; accent: string }> = [
   { id: 'UC1', label: 'Use Case 1: Form with Rules Builder (UI Automation)', accent: 'uc1' },
@@ -181,12 +170,7 @@ function renderFailurePanel(test: TestReportEntry): string {
   </div>`;
 }
 
-/**
- * One representative recording per use case — the first test in the group
- * that has one. A use case with no video (e.g. a run with `video` disabled,
- * or a use case that hasn't executed yet) simply omits this block rather
- * than showing an empty/broken player.
- */
+
 function renderUseCaseRecording(tests: TestReportEntry[]): string {
   const withVideo = tests.find((t) => t.videoBase64);
   if (!withVideo) return '';
@@ -201,13 +185,7 @@ function renderUseCaseRecording(tests: TestReportEntry[]): string {
   </div>`;
 }
 
-/**
- * One fully self-contained, independently-collapsible use case section:
- * Screen Recording, Key Screenshots, and (Use Case 2 only) API Validation
- * Summary — the assignment's key evidence, nothing else. Rendering one
- * section never reads state from another, so a failure in one use case's
- * data cannot affect how the other section renders.
- */
+
 function renderUseCaseSection(sectionId: 'UC1' | 'UC2', label: string, accent: string, tests: TestReportEntry[]): string {
   const failed = tests.filter((t) => t.status === 'failed' || t.status === 'timedOut').length;
 
@@ -235,7 +213,7 @@ function renderUseCaseSection(sectionId: 'UC1' | 'UC2', label: string, accent: s
   </section>`;
 }
 
-// --- Top-level assembly --------------------------------------------------------
+
 
 export function generateHtmlReport(summary: ExecutionSummary, tests: TestReportEntry[]): string {
   const grouped = new Map<string, TestReportEntry[]>();
@@ -294,7 +272,6 @@ export function generateHtmlReport(summary: ExecutionSummary, tests: TestReportE
 </html>`;
 }
 
-// --- Embedded CSS ---------------------------------------------------------------
 
 const REPORT_CSS = `
 :root {
